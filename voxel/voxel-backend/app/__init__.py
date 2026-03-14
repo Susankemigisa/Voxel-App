@@ -1,0 +1,1 @@
+"""Voxel FastAPI application."""

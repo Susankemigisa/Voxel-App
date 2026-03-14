@@ -1,0 +1,81 @@
+# ─────────────────────────────────────────────
+#  VOXEL — monorepo .gitignore
+#  Next.js (frontend) + FastAPI (backend)
+# ─────────────────────────────────────────────
+
+
+# ── Environment & secrets ─────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+*.pem
+*.key
+*.cert
+
+
+# ── Python / FastAPI ──────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+pip-wheel-metadata/
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.log
+
+# HuggingFace model weights (large binary files)
+models/
+*.bin
+*.safetensors
+*.ot
+*.onnx
+*.pt
+*.pth
+
+
+# ── Node / Next.js ────────────────────────────
+node_modules/
+.next/
+out/
+.turbo/
+.vercel/
+.swc/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
+
+
+# ── OS & editor ───────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+
+# ── Misc ──────────────────────────────────────
+*.zip
+*.tar.gz
