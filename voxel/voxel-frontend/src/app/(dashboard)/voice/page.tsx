@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Mic, Square, Copy, CheckCircle, Volume2, RefreshCw, Languages } from 'lucide-react'
+import { Mic, Square, Copy, CheckCircle, Volume2, RefreshCw, Play, Pause, ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader } from '@/components/layout/PageHeader'
 
@@ -9,15 +9,28 @@ type State = 'idle' | 'listening' | 'processing' | 'done' | 'error'
 
 const STEP_LABELS = ['Cleaning audio', 'Transcribing speech', 'Reconstructing text', 'Generating voice']
 
+interface PipelineResult {
+  raw_transcript: string
+  clean_text:     string
+  audio_base64?:  string
+  confidence:     number
+  pipeline_ms:    number
+}
+
 export default function VoicePage() {
-  const [state,    setState]   = useState<State>('idle')
-  const [language, setLanguage] = useState<'en' | 'lg'>('en')
-  const [mode,     setMode]    = useState<'both' | 'audio' | 'visual'>('both')
-  const [step,     setStep]    = useState(-1)
-  const [result,   setResult]  = useState('')
-  const [copied,   setCopied]  = useState(false)
+  const [state,      setState]    = useState<State>('idle')
+  const [language,   setLanguage] = useState<'en' | 'lg'>('en')
+  const [mode,       setMode]     = useState<'both' | 'audio' | 'visual'>('both')
+  const [step,       setStep]     = useState(-1)
+  const [result,     setResult]   = useState<PipelineResult | null>(null)
+  const [copied,     setCopied]   = useState<'raw' | 'clean' | null>(null)
+  const [showRaw,    setShowRaw]  = useState(false)
+  const [isPlaying,  setIsPlaying] = useState(false)
+  const audioRef  = useRef<HTMLAudioElement | null>(null)
   const mediaRef  = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+
+  useEffect(() => { return () => { audioRef.current?.pause() } }, [])
 
   const start = async () => {
     try {
@@ -42,57 +55,92 @@ export default function VoicePage() {
   }
 
   const processAudio = async (blob: Blob) => {
-    // Animate through steps
     for (let i = 0; i < STEP_LABELS.length; i++) {
       setStep(i)
       await new Promise(r => setTimeout(r, 600))
     }
 
-    // Try backend, fall back to browser speech recognition demo
     try {
       const form = new FormData()
       form.append('audio', blob)
       form.append('language', language)
       form.append('output_mode', mode)
+      form.append('rate', '1.0')    // natural speaking speed
+      form.append('pitch', '0.5')   // no pitch shift (TTS service handles voice gender)
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/pipeline/process`, {
         method: 'POST',
         body: form,
       })
       if (!res.ok) throw new Error('Backend unavailable')
-      const data = await res.json()
-      setResult(data.clean_text)
+      const data: PipelineResult = await res.json()
+
       if (data.audio_base64 && mode !== 'visual') {
-        const bytes  = atob(data.audio_base64)
-        const arr    = new Uint8Array(bytes.length).map((_, i) => bytes.charCodeAt(i))
-        const url    = URL.createObjectURL(new Blob([arr], { type: 'audio/wav' }))
-        new Audio(url).play()
-      }
-    } catch {
-      // Backend not running — show demo result
-      // Use browser speech recognition as fallback
-      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        setResult('Voice recorded ✓ — Start the FastAPI backend to get AI-powered speech cleanup.')
+        const bytes = atob(data.audio_base64)
+        const arr   = new Uint8Array(bytes.length).map((_, i) => bytes.charCodeAt(i))
+        const url   = URL.createObjectURL(new Blob([arr], { type: 'audio/wav' }))
+        const audio = new Audio(url)
+        audio.onended = () => setIsPlaying(false)
+        audio.onpause = () => setIsPlaying(false)
+        audioRef.current = audio
       } else {
-        setResult('Voice recorded ✓ — Start the FastAPI backend to process and clean up your speech.')
+        audioRef.current = null
       }
+
+      setResult(data)
+      setShowRaw(false)
+      setIsPlaying(false)
+    } catch {
+      setResult({
+        raw_transcript: '',
+        clean_text: 'Voice recorded ✓ — Start the FastAPI backend to get AI-powered speech cleanup.',
+        pipeline_ms: 0,
+        confidence: 0,
+      })
+      audioRef.current = null
     }
     setStep(-1)
     setState('done')
   }
 
-  const reset = () => { setState('idle'); setResult(''); setStep(-1) }
-
-  // Reset to idle on every mount so stale state doesn't show
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setState('idle'); setResult(''); setStep(-1) }, [])
-
-  const copy = () => {
-    navigator.clipboard.writeText(result)
-    setCopied(true)
-    toast.success('Copied!')
-    setTimeout(() => setCopied(false), 2000)
+  const playPause = () => {
+    const audio = audioRef.current
+    if (!audio) return
+    if (isPlaying) {
+      audio.pause()
+      setIsPlaying(false)
+    } else {
+      audio.play()
+      setIsPlaying(true)
+    }
   }
+
+  const copy = (type: 'raw' | 'clean') => {
+    const text = type === 'raw' ? result?.raw_transcript : result?.clean_text
+    if (!text) return
+    navigator.clipboard.writeText(text)
+    setCopied(type)
+    toast.success('Copied!')
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  const reset = () => {
+    audioRef.current?.pause()
+    audioRef.current = null
+    setState('idle')
+    setResult(null)
+    setStep(-1)
+    setShowRaw(false)
+    setIsPlaying(false)
+  }
+
+  // Normalise for comparison — strip punctuation and extra spaces
+  const normalise = (s: string) => s.replace(/[.,!?]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const rawDiffersFromClean = result
+    ? normalise(result.raw_transcript) !== normalise(result.clean_text)
+    : false
+
+  useEffect(() => { setState('idle'); setResult(null); setStep(-1) }, [])
 
   return (
     <div className="px-5 pb-28 space-y-5" style={{ animation: 'fadeIn 0.4s ease-out forwards' }}>
@@ -188,21 +236,96 @@ export default function VoicePage() {
 
         {state === 'done' && result && (
           <div className="w-full space-y-3">
+
+            {/* Raw transcript — only shown when it actually differs from clean */}
+            {result.raw_transcript && rawDiffersFromClean && (
+              <div className="rounded-2xl overflow-hidden"
+                   style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)' }}>
+                <button
+                  onClick={() => setShowRaw(v => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3"
+                  style={{ color: 'var(--subtle)' }}>
+                  <span className="text-xs font-sora font-semibold uppercase tracking-widest">
+                    Raw Transcript
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {result.confidence > 0 && (
+                      <span className="text-xs font-dm px-2 py-0.5 rounded-full"
+                            style={{ background: 'var(--border)', color: 'var(--muted)' }}>
+                        {Math.round(result.confidence * 100)}% conf
+                      </span>
+                    )}
+                    {showRaw ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </div>
+                </button>
+                {showRaw && (
+                  <div className="px-4 pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-dm leading-relaxed"
+                         style={{ color: 'var(--muted)', fontStyle: 'italic' }}>
+                        "{result.raw_transcript}"
+                      </p>
+                      <button onClick={() => copy('raw')}
+                              className="p-1.5 rounded-xl flex-shrink-0 hover:bg-white/5"
+                              style={{ color: 'var(--muted)' }}>
+                        {copied === 'raw'
+                          ? <CheckCircle size={13} style={{ color: '#14b8a6' }} />
+                          : <Copy size={13} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Cleaned text */}
             <div className="rounded-2xl p-4"
                  style={{ background: 'rgba(11,148,136,0.06)', border: '1px solid rgba(11,148,136,0.25)' }}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-sora font-semibold uppercase tracking-widest"
-                      style={{ color: '#14b8a6' }}>Result</span>
-                <div className="flex gap-1">
-                  <button onClick={copy}
-                          className="p-2 rounded-xl hover:bg-white/5"
-                          style={{ color: 'var(--subtle)' }}>
-                    {copied ? <CheckCircle size={14} style={{ color: '#14b8a6' }} /> : <Copy size={14} />}
-                  </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-sora font-semibold uppercase tracking-widest"
+                        style={{ color: '#14b8a6' }}>
+                    {rawDiffersFromClean ? 'Cleaned Text' : 'Transcript'}
+                  </span>
+                  {result.confidence > 0 && !rawDiffersFromClean && (
+                    <span className="text-xs font-dm px-2 py-0.5 rounded-full"
+                          style={{ background: 'rgba(11,148,136,0.15)', color: '#14b8a6' }}>
+                      {Math.round(result.confidence * 100)}% conf
+                    </span>
+                  )}
                 </div>
+                <button onClick={() => copy('clean')}
+                        className="p-2 rounded-xl hover:bg-white/5"
+                        style={{ color: 'var(--subtle)' }}>
+                  {copied === 'clean'
+                    ? <CheckCircle size={14} style={{ color: '#14b8a6' }} />
+                    : <Copy size={14} />}
+                </button>
               </div>
-              <p className="text-base font-dm font-medium text-white leading-relaxed">"{result}"</p>
+              <p className="text-base font-dm font-medium text-white leading-relaxed">
+                "{result.clean_text}"
+              </p>
             </div>
+
+            {/* Audio playback */}
+            {audioRef.current && mode !== 'visual' && (
+              <button
+                onClick={playPause}
+                className="w-full flex items-center justify-center gap-3 py-3 rounded-2xl font-sora font-semibold text-sm transition-all active:scale-95"
+                style={{
+                  background: isPlaying
+                    ? 'rgba(11,148,136,0.15)'
+                    : 'linear-gradient(135deg,#0b9488,#14b8a6)',
+                  border: isPlaying ? '1px solid rgba(11,148,136,0.4)' : 'none',
+                  color: '#fff',
+                  boxShadow: isPlaying ? 'none' : '0 4px 16px rgba(11,148,136,0.35)',
+                }}>
+                {isPlaying
+                  ? <><Pause size={17} fill="currentColor" /> Pause Audio</>
+                  : <><Play  size={17} fill="currentColor" /> Play Cleaned Audio</>}
+              </button>
+            )}
+
           </div>
         )}
 
@@ -216,7 +339,7 @@ export default function VoicePage() {
         )}
       </div>
 
-      {/* Action button */}
+      {/* Action buttons */}
       {(state === 'idle' || state === 'error') && (
         <button onClick={start}
                 className="w-full py-4 rounded-2xl font-sora font-semibold text-base text-white flex items-center justify-center gap-3 transition-all active:scale-95"

@@ -1,17 +1,21 @@
 """
 ASRService — Stage 2 of the Voice Reconstruction Pipeline.
 
-Runs wav2vec2 (English) or MMS (Luganda) to produce a raw transcript.
-The transcript at this stage is imperfect — stutters, gaps, errors — 
-which Stage 3 (TextReconstructor) will clean up.
+Uses the HuggingFace Inference API to run CDLI Whisper models
+fine-tuned on Ugandan English non-standard speech.
+
+Falls back to the local Whisper model if the Inference API
+is unavailable or not configured.
 """
+import asyncio
 import logging
 from dataclasses import dataclass
 
+import httpx
 import numpy as np
-import torch
+import soundfile as sf
+import io
 
-from app.services.model_loader import model_registry
 from app.models.schemas import Language, ModelName
 from app.config import get_settings
 
@@ -29,15 +33,97 @@ class ASRResult:
 
 class ASRService:
 
+    @property
+    def CDLI_MODELS(self) -> dict:
+        return {
+            Language.EN: settings.hf_asr_cdli_en,
+            # Language.LG: "cdli/whisper-small_finetuned_..._luganda_...",
+        }
+
     async def transcribe(
         self,
         audio: np.ndarray,
         language: Language = Language.EN,
     ) -> ASRResult:
         """
-        Transcribe preprocessed 16kHz float32 audio.
-        Selects the correct model based on language.
+        Transcribe preprocessed 16 kHz float32 audio.
+        Tries the HuggingFace Inference API first (CDLI Whisper),
+        then falls back to local Whisper model if that fails.
         """
+        model_id = self.CDLI_MODELS.get(language)
+
+        if model_id and settings.hf_token:
+            try:
+                return await self._transcribe_inference_api(audio, model_id, language)
+            except Exception as e:
+                logger.warning(
+                    "Inference API failed (%s) — falling back to local model: %s",
+                    model_id, e,
+                )
+
+        return await self._transcribe_local(audio, language)
+
+    # ── HuggingFace Inference API ─────────────────────────────────────────────
+
+    async def _transcribe_inference_api(
+        self,
+        audio:    np.ndarray,
+        model_id: str,
+        language: Language,
+    ) -> ASRResult:
+        buf = io.BytesIO()
+        sf.write(buf, audio, settings.target_sample_rate, format="WAV", subtype="PCM_16")
+        wav_bytes = buf.getvalue()
+
+        url     = f"{settings.hf_inference_api_url}/{model_id}"
+        headers = {
+            "Authorization": f"Bearer {settings.hf_token}",
+            "Content-Type":  "audio/wav",
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(url, headers=headers, content=wav_bytes)
+
+        if response.status_code == 503:
+            logger.info("HF model loading (503) — retrying in 20s…")
+            await asyncio.sleep(20)
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(url, headers=headers, content=wav_bytes)
+
+        if response.status_code == 404:
+            raise RuntimeError(
+                f"Model not found on HF Inference API ({model_id}). "
+                "Check the model ID or that the model supports serverless inference."
+            )
+
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"HF Inference API returned {response.status_code}: {response.text}"
+            )
+
+        result     = response.json()
+        transcript = result.get("text", "").strip()
+        if not transcript:
+            raise RuntimeError("Empty transcript from Inference API")
+
+        logger.info("CDLI Whisper [%s] → %r", model_id.split("/")[-1], transcript[:80])
+
+        return ASRResult(
+            transcript = transcript,
+            language   = language.value,
+            confidence = 0.95,
+            model_used = ModelName.WHISPER,
+        )
+
+    # ── Local fallback ────────────────────────────────────────────────────────
+
+    async def _transcribe_local(
+        self,
+        audio:    np.ndarray,
+        language: Language,
+    ) -> ASRResult:
+        from app.services.model_loader import model_registry
+
         key = "asr_en" if language == Language.EN else "asr_lg"
 
         if not model_registry.is_loaded(key):
@@ -55,62 +141,98 @@ class ASRService:
         processor = loaded.extra
         device    = loaded.device
 
-        return await self._run_inference(audio, model, processor, device, language)
+        # Route to the correct inference method based on model class
+        from transformers import WhisperForConditionalGeneration
+        is_whisper = isinstance(model, WhisperForConditionalGeneration)
 
-    async def _run_inference(
-        self,
-        audio:     np.ndarray,
-        model:     any,
-        processor: any,
-        device:    str,
-        language:  Language,
-    ) -> ASRResult:
-        """Run wav2vec2/MMS inference and return transcript + confidence."""
-        import asyncio
-
-        loop = asyncio.get_event_loop()
+        loop   = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            self._infer_sync,
+            self._infer_whisper_sync if is_whisper else self._infer_wav2vec2_sync,
             audio, model, processor, device, language,
         )
         return result
 
-    def _infer_sync(
+    # ── Whisper inference ─────────────────────────────────────────────────────
+
+    def _infer_whisper_sync(
         self,
         audio:     np.ndarray,
-        model:     any,
-        processor: any,
+        model,
+        processor,
         device:    str,
         language:  Language,
     ) -> ASRResult:
-        """Synchronous inference — runs in thread pool to avoid blocking event loop."""
+        import torch
+
         try:
-            # Tokenise input
             inputs = processor(
                 audio,
-                sampling_rate=settings.target_sample_rate,
-                return_tensors="pt",
-                padding=True,
+                sampling_rate  = settings.target_sample_rate,
+                return_tensors = "pt",
+            )
+            input_features = inputs.input_features.to(device)
+
+            with torch.no_grad():
+                # Force English transcription — prevents Whisper guessing language
+                forced_ids = processor.get_decoder_prompt_ids(
+                    language="english", task="transcribe"
+                )
+                predicted_ids = model.generate(
+                    input_features,
+                    forced_decoder_ids=forced_ids,
+                )
+
+            transcript = processor.batch_decode(
+                predicted_ids, skip_special_tokens=True
+            )[0].strip()
+
+            logger.info("Local Whisper → %r", transcript)
+
+            return ASRResult(
+                transcript = transcript,
+                language   = language.value,
+                confidence = 0.92,   # Whisper doesn't expose token-level confidence
+                model_used = ModelName.WHISPER,
+            )
+
+        except Exception as e:
+            logger.error("Local Whisper inference failed: %s", e)
+            raise RuntimeError(f"Transcription failed: {e}") from e
+
+    # ── Wav2Vec2 inference (Luganda / legacy) ─────────────────────────────────
+
+    def _infer_wav2vec2_sync(
+        self,
+        audio:     np.ndarray,
+        model,
+        processor,
+        device:    str,
+        language:  Language,
+    ) -> ASRResult:
+        import torch
+
+        try:
+            inputs = processor(
+                audio,
+                sampling_rate  = settings.target_sample_rate,
+                return_tensors = "pt",
+                padding        = True,
             )
             input_values = inputs.input_values.to(device)
 
             with torch.no_grad():
                 logits = model(input_values).logits
 
-            # Decode predicted ids
             predicted_ids = torch.argmax(logits, dim=-1)
             transcript    = processor.batch_decode(predicted_ids)[0].strip()
 
-            # Estimate confidence from softmax probability of top token
-            probs       = torch.softmax(logits, dim=-1)
-            max_probs   = probs.max(dim=-1).values
-            confidence  = float(max_probs.mean().item())
-            confidence  = round(min(max(confidence, 0.0), 1.0), 3)
+            probs      = torch.softmax(logits, dim=-1)
+            confidence = float(probs.max(dim=-1).values.mean().item())
+            confidence = round(min(max(confidence, 0.0), 1.0), 3)
 
             model_used = ModelName.WAV2VEC2 if language == Language.EN else ModelName.MMS
-
-            logger.debug("ASR transcript: %r  confidence: %.3f", transcript, confidence)
+            logger.debug("Local wav2vec2 → %r  confidence: %.3f", transcript, confidence)
 
             return ASRResult(
                 transcript = transcript,
@@ -120,7 +242,7 @@ class ASRService:
             )
 
         except Exception as e:
-            logger.error("ASR inference failed: %s", e)
+            logger.error("Local wav2vec2 inference failed: %s", e)
             raise RuntimeError(f"Transcription failed: {e}") from e
 
 

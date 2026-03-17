@@ -11,26 +11,51 @@ export interface Database {
     Tables: {
       profiles: {
         Row: {
-          id:         string
-          full_name:  string | null
-          email:      string
-          avatar_url: string | null
-          plan:       'free' | 'pro'
-          created_at: string
-          updated_at: string
+          id:           string
+          full_name:    string | null
+          display_name: string | null   // editable public name (profile page)
+          email:        string
+          avatar_url:   string | null
+          plan:         'free' | 'pro'
+          created_at:   string
+          updated_at:   string
         }
         Insert: {
-          id:          string
-          full_name?:  string | null
-          email:       string
-          avatar_url?: string | null
-          plan?:       'free' | 'pro'
+          id:            string
+          full_name?:    string | null
+          display_name?: string | null
+          email:         string
+          avatar_url?:   string | null
+          plan?:         'free' | 'pro'
         }
         Update: {
-          full_name?:  string | null
-          avatar_url?: string | null
-          plan?:       'free' | 'pro'
-          updated_at?: string
+          full_name?:    string | null
+          display_name?: string | null
+          avatar_url?:   string | null
+          plan?:         'free' | 'pro'
+          updated_at?:   string
+        }
+      }
+
+      emergency_contacts: {
+        Row: {
+          id:         string
+          user_id:    string
+          name:       string
+          phone:      string
+          relation:   string
+          created_at: string
+        }
+        Insert: {
+          user_id:  string
+          name:     string
+          phone:    string
+          relation: string
+        }
+        Update: {
+          name?:     string
+          phone?:    string
+          relation?: string
         }
       }
 
@@ -87,22 +112,22 @@ export interface Database {
           category?: 'navigation' | 'emergency' | 'custom' | null
         }
         Update: {
-          phrase?:    string
-          language?:  string
-          category?:  'navigation' | 'emergency' | 'custom' | null
+          phrase?:   string
+          language?: string
+          category?: 'navigation' | 'emergency' | 'custom' | null
         }
       }
 
       transcription_history: {
         Row: {
-          id:          string
-          user_id:     string
-          transcript:  string
-          language:    string
-          confidence:  number | null
-          audio_url:   string | null
-          model_used:  'wav2vec2' | 'mms' | null
-          created_at:  string
+          id:         string
+          user_id:    string
+          transcript: string
+          language:   string
+          confidence: number | null
+          audio_url:  string | null
+          model_used: 'whisper' | 'wav2vec2' | 'mms' | null
+          created_at: string
         }
         Insert: {
           user_id:     string
@@ -110,7 +135,7 @@ export interface Database {
           language:    string
           confidence?: number | null
           audio_url?:  string | null
-          model_used?: 'wav2vec2' | 'mms' | null
+          model_used?: 'whisper' | 'wav2vec2' | 'mms' | null
         }
         Update: {
           transcript?: string
@@ -118,14 +143,15 @@ export interface Database {
       }
     }
 
-    Views: { [_ in never]: never }
+    Views:     { [_ in never]: never }
     Functions: { [_ in never]: never }
-    Enums: { [_ in never]: never }
+    Enums:     { [_ in never]: never }
   }
 }
 
 // Convenience type aliases
 export type Profile            = Database['public']['Tables']['profiles']['Row']
+export type EmergencyContact   = Database['public']['Tables']['emergency_contacts']['Row']
 export type UserPreferences    = Database['public']['Tables']['user_preferences']['Row']
 export type SavedPhrase        = Database['public']['Tables']['saved_phrases']['Row']
 export type TranscriptionEntry = Database['public']['Tables']['transcription_history']['Row']

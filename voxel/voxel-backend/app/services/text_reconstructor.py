@@ -1,92 +1,48 @@
 """
 TextReconstructor — Stage 3 of the Voice Reconstruction Pipeline.
 
-Takes the raw, imperfect ASR transcript and uses OpenAI GPT-4o-mini
-to reconstruct it into a clean, grammatically correct sentence — removing
-stutters, completing fragments, fixing grammar while preserving exact intent.
+Cleans raw ASR transcripts using rule-based processing — no external
+API required. Handles the most common impaired-speech artefacts that
+appear in Whisper output:
 
-Handles:
-  • Stuttering / repetition    ("I I I need" → "I need")
-  • Incomplete sentences       ("where is the bath-" → "Where is the bathroom?")
-  • Slurred / garbled words    ("hel-help" → "help")
-  • Grammar correction
-  • Luganda text reconstruction
+  • Stuttering / repetition    ("I I I need"  → "I need")
+  • Cut-off / hyphenated words ("bath-"       → removed/joined)
+  • Filler words               ("um", "uh"    → removed)
+  • Punctuation & capitalisation
+  • Luganda text (same rules apply)
 """
 import logging
 import re
 from dataclasses import dataclass
 
-from openai import OpenAI, APIError
-from tenacity import retry, stop_after_attempt, wait_exponential
-
-from app.config import get_settings
-
-logger   = logging.getLogger(__name__)
-settings = get_settings()
-
-SYSTEM_PROMPT = """You are a speech reconstruction assistant for people with speech impairments.
-
-Your job: take a raw, imperfect ASR transcript and return ONE clean, grammatically correct sentence or phrase that best represents what the person intended to communicate.
-
-Rules:
-- Remove ALL stutters and repetitions (e.g. "I I I want" → "I want", "the the" → "the")
-- Complete trailing or cut-off sentences using natural language inference
-- Fix grammar, spelling, and punctuation
-- Preserve the original meaning and intent EXACTLY — do not add information not implied
-- Keep output concise — it will be spoken aloud via text-to-speech
-- If the input is in Luganda, reconstruct and output in Luganda
-- Return ONLY the cleaned sentence. No explanations, no labels, no quotes.
-
-Examples:
-  Input:  "i i i need h-help finding the the accessible entrance near north wing"
-  Output: I need help finding the accessible entrance near the north wing.
-
-  Input:  "where is the the bath-bathroom please"
-  Output: Where is the bathroom, please?
-
-  Input:  "c-call a doctor please please"
-  Output: Please call a doctor.
-
-  Input:  "nze nze nsaba obu-"
-  Output: Nze nsaba obuyambi.
-
-  Input:  "i need to go home"
-  Output: I need to go home."""
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class ReconstructionResult:
-    clean_text:     str
-    original_text:  str
-    was_modified:   bool
+    clean_text:    str
+    original_text: str
+    was_modified:  bool
 
 
 class TextReconstructor:
 
-    def __init__(self):
-        self._client: OpenAI | None = None
+    # Filler words to strip (English + common Luganda fillers)
+    FILLERS = {
+        "um", "uh", "er", "eh", "ah", "hmm", "hm",
+        "like", "you know", "i mean",
+        "naye",   # Luganda filler
+    }
 
-    def _get_client(self) -> OpenAI:
-        if self._client is None:
-            if not settings.openai_api_key:
-                raise RuntimeError("OPENAI_API_KEY not configured")
-            self._client = OpenAI(api_key=settings.openai_api_key)
-        return self._client
-
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
     async def clean(
         self,
         raw_transcript: str,
-        language:       str = "en",
-        context:        list[str] | None = None,
+        language: str = "en",
+        context: list[str] | None = None,
     ) -> ReconstructionResult:
         """
         Clean a raw ASR transcript into a well-formed sentence.
-
-        Args:
-            raw_transcript: Raw output from ASR model
-            language:       'en' or 'lg'
-            context:        Optional list of user's saved phrases for intent inference
+        Fully synchronous under the hood — no I/O, no external calls.
         """
         if not raw_transcript or not raw_transcript.strip():
             return ReconstructionResult(
@@ -95,116 +51,68 @@ class TextReconstructor:
                 was_modified  = False,
             )
 
-        # Quick pre-filter: if already clean, skip the LLM call
-        if self._is_already_clean(raw_transcript):
-            return ReconstructionResult(
-                clean_text    = raw_transcript.strip().capitalize(),
-                original_text = raw_transcript,
-                was_modified  = False,
-            )
+        original = raw_transcript
+        text     = raw_transcript.strip()
 
-        import asyncio
-        loop   = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            self._call_llm,
-            raw_transcript,
-            language,
-            context or [],
+        text = self._remove_repetitions(text)
+        text = self._remove_cutoff_words(text)
+        text = self._remove_fillers(text)
+        text = self._collapse_whitespace(text)
+        text = self._capitalise_and_punctuate(text)
+
+        was_modified = text.lower() != original.strip().lower()
+
+        logger.info(
+            "TextReconstructor: %r → %r (modified=%s)",
+            original, text, was_modified,
         )
-        return result
 
-    def _call_llm(
-        self,
-        raw_transcript: str,
-        language:       str,
-        context:        list[str],
-    ) -> ReconstructionResult:
-        """Synchronous LLM call — runs in thread pool."""
-        client = self._get_client()
+        return ReconstructionResult(
+            clean_text    = text,
+            original_text = original,
+            was_modified  = was_modified,
+        )
 
-        # Build user message with optional context
-        user_msg = raw_transcript.strip()
-        if context:
-            top_context = context[:5]
-            user_msg = (
-                f"Saved phrases for context (do NOT copy unless exact match): "
-                f"{'; '.join(top_context)}\n\n"
-                f"Transcript to clean: {raw_transcript.strip()}"
-            )
+    # ── Rules ─────────────────────────────────────────────────────────────────
 
-        try:
-            response = client.chat.completions.create(
-                model      = settings.llm_model,
-                max_tokens = 256,
-                messages   = [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_msg},
-                ],
-            )
-            clean_text = response.choices[0].message.content.strip()
-
-            # Strip any accidental quotes the model may have added
-            clean_text = clean_text.strip('"\'')
-
-            was_modified = clean_text.lower() != raw_transcript.strip().lower()
-
-            logger.info(
-                "TextReconstructor: %r → %r (modified=%s)",
-                raw_transcript, clean_text, was_modified,
-            )
-
-            return ReconstructionResult(
-                clean_text    = clean_text,
-                original_text = raw_transcript,
-                was_modified  = was_modified,
-            )
-
-        except APIError as e:
-            logger.error("OpenAI API error: %s", e)
-            # Graceful fallback: apply basic rule-based cleanup
-            return ReconstructionResult(
-                clean_text    = self._rule_based_cleanup(raw_transcript),
-                original_text = raw_transcript,
-                was_modified  = True,
-            )
-
-    def _is_already_clean(self, text: str) -> bool:
-        """Fast heuristic: text needs LLM if it has stutters/hyphens/repetitions."""
-        t = text.lower()
-        # Has hyphens mid-word (cut-off words)
-        if re.search(r'\w-\w|\w-\s', t):
-            return False
-        # Has word repetitions ("the the", "i i")
-        words = t.split()
-        for i in range(len(words) - 1):
-            if words[i] == words[i + 1] and len(words[i]) > 1:
-                return False
-        # Short fragment (likely incomplete)
-        if len(words) <= 2:
-            return False
-        return True
-
-    def _rule_based_cleanup(self, text: str) -> str:
-        """
-        Minimal rule-based fallback used when LLM is unavailable.
-        Removes obvious stutters and hyphens.
-        """
-        t = text.strip()
-        # Remove word-level repetitions
-        words   = t.split()
+    def _remove_repetitions(self, text: str) -> str:
+        """Remove consecutive duplicate words: 'I I I need' → 'I need'."""
+        words   = text.split()
         cleaned = [words[0]] if words else []
         for word in words[1:]:
             if word.lower() != cleaned[-1].lower():
                 cleaned.append(word)
-        t = " ".join(cleaned)
-        # Remove mid-word hyphens
-        t = re.sub(r'(\w+)-\s+', '', t)
-        t = re.sub(r'\s+', ' ', t).strip()
-        # Capitalise and punctuate
-        if t and not t[-1] in ".!?":
-            t += "."
-        return t[0].upper() + t[1:] if t else t
+        return " ".join(cleaned)
+
+    def _remove_cutoff_words(self, text: str) -> str:
+        """
+        Drop trailing cut-off fragments ('bath-', 'h-help' → 'help').
+        - 'word-'       → remove entirely (trailing cut-off)
+        - 'h-help'      → 'help'  (stuttered lead-in)
+        - 'hel-help'    → 'help'  (partial + full word — keep the full word)
+        """
+        # 'x-word' where x is 1–3 chars — stutter lead-in, keep the full word
+        text = re.sub(r'\b\w{1,3}-(\w+)', r'\1', text)
+        # 'word-' at end of token — trailing cut-off, remove
+        text = re.sub(r'\b\w+-\s*', ' ', text)
+        return text
+
+    def _remove_fillers(self, text: str) -> str:
+        """Strip common filler words."""
+        pattern = r'\b(' + '|'.join(re.escape(f) for f in self.FILLERS) + r')\b'
+        return re.sub(pattern, '', text, flags=re.IGNORECASE)
+
+    def _collapse_whitespace(self, text: str) -> str:
+        return re.sub(r'\s+', ' ', text).strip()
+
+    def _capitalise_and_punctuate(self, text: str) -> str:
+        """Capitalise first letter; add a period if no terminal punctuation."""
+        if not text:
+            return text
+        text = text[0].upper() + text[1:]
+        if text[-1] not in ".!?,":
+            text += "."
+        return text
 
 
 # Singleton

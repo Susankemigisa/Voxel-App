@@ -2,15 +2,17 @@
 AudioProcessor — Stage 1 of the Voice Reconstruction Pipeline.
 
 Handles:
-  • Format conversion (any → 16kHz mono WAV)
+  • Format conversion (webm/opus/ogg/mp3/wav → 16kHz mono WAV)
   • Noise reduction        (noisereduce)
   • Volume normalisation   (librosa RMS normalise)
   • Speed normalisation    (librosa time_stretch for slurred/rushed speech)
   • Silence trimming       (librosa trim)
-  • VAD gating             (webrtcvad — keeps only speech frames)
 """
 import io
 import logging
+import subprocess
+import tempfile
+import os
 import warnings
 from dataclasses import dataclass
 
@@ -55,27 +57,22 @@ class AudioProcessor:
         Full Stage-1 preprocessing pipeline.
         Returns clean float32 numpy audio at 16 kHz.
         """
-        # 1. Decode any format → float32 numpy @ target SR
         audio = self._decode(audio_bytes)
 
         original_rms = float(np.sqrt(np.mean(audio ** 2))) if len(audio) else 0.0
 
-        # 2. Noise reduction
         was_denoised = False
         if denoise and len(audio) > TARGET_SR * 0.2:
             audio = self._denoise(audio)
             was_denoised = True
 
-        # 3. Volume normalisation
         if normalize_volume:
             audio = self._normalize_volume(audio)
 
-        # 4. Speed normalisation (fix slurred / rushed speech)
         was_stretched = False
         if normalize_speed:
             audio, was_stretched = self._normalize_speed(audio)
 
-        # 5. Silence removal
         if remove_silence:
             audio = self._trim_silence(audio)
 
@@ -92,45 +89,101 @@ class AudioProcessor:
             was_stretched  = was_stretched,
         )
 
-    # ── Stage helpers ─────────────────────────────────────────────────────────
+    # ── Decode: handles webm/opus from browser ────────────────────────────────
 
     def _decode(self, audio_bytes: bytes) -> np.ndarray:
-        """Decode audio bytes (webm/wav/ogg/mp3) → float32 mono @ 16 kHz."""
+        """
+        Decode audio bytes to float32 mono @ 16 kHz.
+        Tries 3 methods in order:
+          1. soundfile  — fast, handles WAV/FLAC/OGG
+          2. pydub      — handles webm/mp3/opus via ffmpeg
+          3. ffmpeg CLI — direct subprocess fallback
+        """
+        # Method 1: soundfile (WAV, FLAC, OGG Vorbis)
         try:
-            # Try soundfile first (fastest, handles WAV/FLAC/OGG)
             buf = io.BytesIO(audio_bytes)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 audio, sr = sf.read(buf, dtype="float32", always_2d=False)
+            return self._to_mono_16k(audio, sr)
         except Exception:
-            # Fallback: librosa handles webm/mp3 via ffmpeg
-            buf = io.BytesIO(audio_bytes)
-            audio, sr = librosa.load(buf, sr=None, mono=True, dtype=np.float32)
+            pass
 
-        # Convert stereo → mono
+        # Method 2: pydub (webm, mp3, opus — needs ffmpeg)
+        try:
+            from pydub import AudioSegment
+            buf  = io.BytesIO(audio_bytes)
+            seg  = AudioSegment.from_file(buf)
+            seg  = seg.set_frame_rate(TARGET_SR).set_channels(1).set_sample_width(2)
+            raw  = np.frombuffer(seg.raw_data, dtype=np.int16).astype(np.float32)
+            audio = raw / 32768.0
+            return audio.astype(np.float32)
+        except Exception as e:
+            logger.debug("pydub decode failed: %s", e)
+
+        # Method 3: ffmpeg CLI subprocess (most compatible)
+        try:
+            return self._decode_via_ffmpeg(audio_bytes)
+        except Exception as e:
+            logger.debug("ffmpeg CLI decode failed: %s", e)
+
+        raise RuntimeError(
+            "Could not decode audio. "
+            "Install ffmpeg: https://ffmpeg.org/download.html  "
+            "then run: pip install pydub"
+        )
+
+    def _decode_via_ffmpeg(self, audio_bytes: bytes) -> np.ndarray:
+        """Decode using ffmpeg subprocess — handles any format ffmpeg supports."""
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
+            tmp_in.write(audio_bytes)
+            tmp_in_path = tmp_in.name
+
+        tmp_out_path = tmp_in_path + ".wav"
+        try:
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-i", tmp_in_path,
+                    "-ar", str(TARGET_SR),
+                    "-ac", "1",
+                    "-f", "wav",
+                    tmp_out_path,
+                ],
+                capture_output=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"ffmpeg error: {result.stderr.decode()[:200]}")
+
+            audio, sr = sf.read(tmp_out_path, dtype="float32")
+            return self._to_mono_16k(audio, sr)
+        finally:
+            for path in (tmp_in_path, tmp_out_path):
+                try:
+                    os.unlink(path)
+                except Exception:
+                    pass
+
+    def _to_mono_16k(self, audio: np.ndarray, sr: int) -> np.ndarray:
+        """Convert stereo→mono and resample to 16 kHz."""
         if audio.ndim == 2:
             audio = np.mean(audio, axis=1)
-
-        # Resample to 16 kHz
         if sr != TARGET_SR:
             audio = librosa.resample(audio, orig_sr=sr, target_sr=TARGET_SR)
-
         return audio.astype(np.float32)
 
+    # ── Processing stages ─────────────────────────────────────────────────────
+
     def _denoise(self, audio: np.ndarray) -> np.ndarray:
-        """
-        Spectral noise reduction via noisereduce.
-        Uses the first 0.5s as the noise profile (stationary noise).
-        """
         noise_clip_len = min(int(TARGET_SR * 0.5), len(audio) // 4)
         noise_clip     = audio[:noise_clip_len] if noise_clip_len > 0 else audio
-
         try:
             reduced = nr.reduce_noise(
-                y           = audio,
-                y_noise     = noise_clip,
-                sr          = TARGET_SR,
-                stationary  = False,   # handles varying background noise
+                y             = audio,
+                y_noise       = noise_clip,
+                sr            = TARGET_SR,
+                stationary    = False,
                 prop_decrease = 0.75,
             )
             return reduced.astype(np.float32)
@@ -139,14 +192,12 @@ class AudioProcessor:
             return audio
 
     def _normalize_volume(self, audio: np.ndarray, target_rms: float = 0.1) -> np.ndarray:
-        """RMS normalisation — boosts whispered speech to consistent level."""
         rms = np.sqrt(np.mean(audio ** 2))
         if rms < 1e-6:
             return audio
         gain  = target_rms / rms
-        gain  = np.clip(gain, 0.1, 20.0)   # cap at 20× to avoid clipping
+        gain  = np.clip(gain, 0.1, 20.0)
         audio = audio * gain
-        # Hard clip to [-1, 1]
         return np.clip(audio, -1.0, 1.0).astype(np.float32)
 
     def _normalize_speed(
@@ -155,24 +206,14 @@ class AudioProcessor:
         min_rate: float = 0.65,
         max_rate: float = 1.6,
     ) -> tuple[np.ndarray, bool]:
-        """
-        Estimate speech rate and stretch if too slow (slurred) or too fast.
-        Returns (audio, was_modified).
-        """
-        # Estimate rate via zero-crossing rate as a proxy for speaking speed
         zcr      = librosa.feature.zero_crossing_rate(audio, hop_length=512)[0]
         mean_zcr = float(np.mean(zcr))
-
-        # Thresholds tuned empirically
         if mean_zcr < 0.03:
-            # Very slow / slurred speech — speed up gently
             rate = 1.15
         elif mean_zcr > 0.20:
-            # Rushed speech — slow down gently
             rate = 0.90
         else:
             return audio, False
-
         try:
             stretched = librosa.effects.time_stretch(audio, rate=rate)
             return stretched.astype(np.float32), True
@@ -186,14 +227,12 @@ class AudioProcessor:
         top_db: int = 30,
         pad_ms: int = 100,
     ) -> np.ndarray:
-        """Remove leading/trailing silence, add small padding."""
         trimmed, _ = librosa.effects.trim(audio, top_db=top_db)
         pad_samples = int(TARGET_SR * pad_ms / 1000)
         padding     = np.zeros(pad_samples, dtype=np.float32)
         return np.concatenate([padding, trimmed, padding])
 
     def audio_to_bytes(self, audio: np.ndarray, sample_rate: int = TARGET_SR) -> bytes:
-        """Convert numpy float32 audio → WAV bytes."""
         buf = io.BytesIO()
         sf.write(buf, audio, sample_rate, format="WAV", subtype="PCM_16")
         buf.seek(0)
