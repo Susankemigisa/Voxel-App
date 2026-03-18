@@ -35,12 +35,11 @@ class Settings(BaseSettings):
     #   cdli/whisper-large-v3_finetuned_ugandan_english_nonstandard_speech_v1.0 (2B   — most accurate)
     hf_asr_cdli_en: str = "cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0"
 
-    # ── ASR — local fallback models ───────────────────────────────────────────
-    # Points at the same CDLI Whisper model so the local fallback is also
-    # Ugandan-English-aware. model_loader.py detects "whisper" in the name
-    # and uses WhisperForConditionalGeneration automatically.
+    # ── ASR — local fallback / Luganda ────────────────────────────────────────
+    # English: same CDLI Whisper model, loaded locally when API is unavailable
+    # Luganda: mms-1b-all supports 1162 languages including Luganda (lug adapter)
     hf_asr_model_en: str = "cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0"
-    hf_asr_model_lg: str = "facebook/mms-300m"           # Luganda
+    hf_asr_model_lg: str = "facebook/mms-1b-all"
 
     # ── Translation models ────────────────────────────────────────────────────
     hf_translate_en_lg: str = "Helsinki-NLP/opus-mt-en-lg"

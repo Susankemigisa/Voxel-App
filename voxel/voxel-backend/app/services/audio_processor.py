@@ -5,8 +5,11 @@ Handles:
   • Format conversion (webm/opus/ogg/mp3/wav → 16kHz mono WAV)
   • Noise reduction        (noisereduce)
   • Volume normalisation   (librosa RMS normalise)
-  • Speed normalisation    (librosa time_stretch for slurred/rushed speech)
   • Silence trimming       (librosa trim)
+
+NOTE: Speed normalisation has been intentionally removed. Whisper handles
+variable speech rates natively — pre-stretching audio with ZCR-based
+heuristics was distorting the signal and causing mistranscriptions.
 """
 import io
 import logging
@@ -37,7 +40,7 @@ class AudioProcessingResult:
     original_rms:   float
     normalised_rms: float
     was_denoised:   bool
-    was_stretched:  bool
+    was_stretched:  bool         # always False now — kept for schema compatibility
 
 
 class AudioProcessor:
@@ -51,7 +54,7 @@ class AudioProcessor:
         denoise:          bool = True,
         normalize_volume: bool = True,
         remove_silence:   bool = True,
-        normalize_speed:  bool = True,
+        normalize_speed:  bool = False,   # disabled — Whisper handles this natively
     ) -> AudioProcessingResult:
         """
         Full Stage-1 preprocessing pipeline.
@@ -69,10 +72,6 @@ class AudioProcessor:
         if normalize_volume:
             audio = self._normalize_volume(audio)
 
-        was_stretched = False
-        if normalize_speed:
-            audio, was_stretched = self._normalize_speed(audio)
-
         if remove_silence:
             audio = self._trim_silence(audio)
 
@@ -86,7 +85,7 @@ class AudioProcessor:
             original_rms   = original_rms,
             normalised_rms = normalised_rms,
             was_denoised   = was_denoised,
-            was_stretched  = was_stretched,
+            was_stretched  = False,
         )
 
     # ── Decode: handles webm/opus from browser ────────────────────────────────
@@ -199,27 +198,6 @@ class AudioProcessor:
         gain  = np.clip(gain, 0.1, 20.0)
         audio = audio * gain
         return np.clip(audio, -1.0, 1.0).astype(np.float32)
-
-    def _normalize_speed(
-        self,
-        audio: np.ndarray,
-        min_rate: float = 0.65,
-        max_rate: float = 1.6,
-    ) -> tuple[np.ndarray, bool]:
-        zcr      = librosa.feature.zero_crossing_rate(audio, hop_length=512)[0]
-        mean_zcr = float(np.mean(zcr))
-        if mean_zcr < 0.03:
-            rate = 1.15
-        elif mean_zcr > 0.20:
-            rate = 0.90
-        else:
-            return audio, False
-        try:
-            stretched = librosa.effects.time_stretch(audio, rate=rate)
-            return stretched.astype(np.float32), True
-        except Exception as e:
-            logger.warning("Time stretch failed: %s", e)
-            return audio, False
 
     def _trim_silence(
         self,

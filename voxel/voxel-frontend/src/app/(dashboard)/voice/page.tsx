@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Mic, Square, Copy, CheckCircle, Volume2, RefreshCw, Play, Pause, ChevronDown, ChevronUp } from 'lucide-react'
+import { Mic, Square, Copy, CheckCircle, RefreshCw, Play, Pause, ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader } from '@/components/layout/PageHeader'
 
@@ -18,19 +18,20 @@ interface PipelineResult {
 }
 
 export default function VoicePage() {
-  const [state,      setState]    = useState<State>('idle')
-  const [language,   setLanguage] = useState<'en' | 'lg'>('en')
-  const [mode,       setMode]     = useState<'both' | 'audio' | 'visual'>('both')
-  const [step,       setStep]     = useState(-1)
-  const [result,     setResult]   = useState<PipelineResult | null>(null)
-  const [copied,     setCopied]   = useState<'raw' | 'clean' | null>(null)
-  const [showRaw,    setShowRaw]  = useState(false)
+  const [state,      setState]     = useState<State>('idle')
+  const [language,   setLanguage]  = useState<'en' | 'lg'>('en')
+  const [mode,       setMode]      = useState<'both' | 'audio' | 'visual'>('both')
+  const [step,       setStep]      = useState(-1)
+  const [result,     setResult]    = useState<PipelineResult | null>(null)
+  const [copied,     setCopied]    = useState<'raw' | 'clean' | null>(null)
+  const [showRaw,    setShowRaw]   = useState(false)
   const [isPlaying,  setIsPlaying] = useState(false)
   const audioRef  = useRef<HTMLAudioElement | null>(null)
   const mediaRef  = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
 
   useEffect(() => { return () => { audioRef.current?.pause() } }, [])
+  useEffect(() => { setState('idle'); setResult(null); setStep(-1) }, [])
 
   const start = async () => {
     try {
@@ -65,8 +66,8 @@ export default function VoicePage() {
       form.append('audio', blob)
       form.append('language', language)
       form.append('output_mode', mode)
-      form.append('rate', '1.0')    // natural speaking speed
-      form.append('pitch', '0.5')   // no pitch shift (TTS service handles voice gender)
+      form.append('rate', '1.0')
+      form.append('pitch', '0.5')
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/pipeline/process`, {
         method: 'POST',
@@ -108,7 +109,6 @@ export default function VoicePage() {
     if (!audio) return
     if (isPlaying) {
       audio.pause()
-      setIsPlaying(false)
     } else {
       audio.play()
       setIsPlaying(true)
@@ -134,13 +134,9 @@ export default function VoicePage() {
     setIsPlaying(false)
   }
 
-  // Normalise for comparison — strip punctuation and extra spaces
-  const normalise = (s: string) => s.replace(/[.,!?]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
-  const rawDiffersFromClean = result
-    ? normalise(result.raw_transcript) !== normalise(result.clean_text)
-    : false
-
-  useEffect(() => { setState('idle'); setResult(null); setStep(-1) }, [])
+  const normalise     = (s: string) => s.replace(/[.,!?]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const rawDiffers    = result ? normalise(result.raw_transcript) !== normalise(result.clean_text) : false
+  const hasRaw        = !!(result?.raw_transcript)
 
   return (
     <div className="px-5 pb-28 space-y-5" style={{ animation: 'fadeIn 0.4s ease-out forwards' }}>
@@ -218,15 +214,14 @@ export default function VoicePage() {
                      background: step === i ? 'rgba(11,148,136,0.1)' : 'transparent',
                      border: `1px solid ${step === i ? 'rgba(11,148,136,0.3)' : 'transparent'}`,
                    }}>
-                {step > i ? (
-                  <CheckCircle size={15} style={{ color: '#14b8a6' }} />
-                ) : step === i ? (
-                  <span className="w-4 h-4 border-2 rounded-full animate-spin flex-shrink-0"
-                        style={{ borderColor: 'rgba(11,148,136,0.3)', borderTopColor: '#14b8a6' }} />
-                ) : (
-                  <span className="w-4 h-4 rounded-full flex-shrink-0"
-                        style={{ border: '2px solid var(--border)' }} />
-                )}
+                {step > i
+                  ? <CheckCircle size={15} style={{ color: '#14b8a6' }} />
+                  : step === i
+                    ? <span className="w-4 h-4 border-2 rounded-full animate-spin flex-shrink-0"
+                            style={{ borderColor: 'rgba(11,148,136,0.3)', borderTopColor: '#14b8a6' }} />
+                    : <span className="w-4 h-4 rounded-full flex-shrink-0"
+                            style={{ border: '2px solid var(--border)' }} />
+                }
                 <span className="text-sm font-dm"
                       style={{ color: step >= i ? 'var(--text)' : 'var(--muted)' }}>{label}</span>
               </div>
@@ -237,17 +232,30 @@ export default function VoicePage() {
         {state === 'done' && result && (
           <div className="w-full space-y-3">
 
-            {/* Raw transcript — only shown when it actually differs from clean */}
-            {result.raw_transcript && rawDiffersFromClean && (
+            {/* ── Raw transcript — always shown, collapsible ── */}
+            {hasRaw && (
               <div className="rounded-2xl overflow-hidden"
                    style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)' }}>
                 <button
                   onClick={() => setShowRaw(v => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3"
+                  className="w-full flex items-center justify-between px-4 py-3 transition-colors hover:bg-white/5"
                   style={{ color: 'var(--subtle)' }}>
-                  <span className="text-xs font-sora font-semibold uppercase tracking-widest">
-                    Raw Transcript
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-sora font-semibold uppercase tracking-widest">
+                      Raw Transcript
+                    </span>
+                    {/* Badge shows if AI actually changed anything */}
+                    {rawDiffers
+                      ? <span className="text-xs px-2 py-0.5 rounded-full font-dm"
+                               style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316' }}>
+                          modified
+                        </span>
+                      : <span className="text-xs px-2 py-0.5 rounded-full font-dm"
+                               style={{ background: 'rgba(11,148,136,0.15)', color: '#14b8a6' }}>
+                          unchanged
+                        </span>
+                    }
+                  </div>
                   <div className="flex items-center gap-2">
                     {result.confidence > 0 && (
                       <span className="text-xs font-dm px-2 py-0.5 rounded-full"
@@ -258,9 +266,11 @@ export default function VoicePage() {
                     {showRaw ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </div>
                 </button>
+
                 {showRaw && (
-                  <div className="px-4 pb-3">
-                    <div className="flex items-start justify-between gap-2">
+                  <div className="px-4 pb-4 pt-0 border-t"
+                       style={{ borderColor: 'var(--border)' }}>
+                    <div className="flex items-start justify-between gap-2 pt-3">
                       <p className="text-sm font-dm leading-relaxed"
                          style={{ color: 'var(--muted)', fontStyle: 'italic' }}>
                         "{result.raw_transcript}"
@@ -278,22 +288,14 @@ export default function VoicePage() {
               </div>
             )}
 
-            {/* Cleaned text */}
+            {/* ── Cleaned text ── */}
             <div className="rounded-2xl p-4"
                  style={{ background: 'rgba(11,148,136,0.06)', border: '1px solid rgba(11,148,136,0.25)' }}>
               <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-sora font-semibold uppercase tracking-widest"
-                        style={{ color: '#14b8a6' }}>
-                    {rawDiffersFromClean ? 'Cleaned Text' : 'Transcript'}
-                  </span>
-                  {result.confidence > 0 && !rawDiffersFromClean && (
-                    <span className="text-xs font-dm px-2 py-0.5 rounded-full"
-                          style={{ background: 'rgba(11,148,136,0.15)', color: '#14b8a6' }}>
-                      {Math.round(result.confidence * 100)}% conf
-                    </span>
-                  )}
-                </div>
+                <span className="text-xs font-sora font-semibold uppercase tracking-widest"
+                      style={{ color: '#14b8a6' }}>
+                  {rawDiffers ? 'Cleaned Text' : 'Transcript'}
+                </span>
                 <button onClick={() => copy('clean')}
                         className="p-2 rounded-xl hover:bg-white/5"
                         style={{ color: 'var(--subtle)' }}>
@@ -307,15 +309,13 @@ export default function VoicePage() {
               </p>
             </div>
 
-            {/* Audio playback */}
+            {/* ── Audio playback ── */}
             {audioRef.current && mode !== 'visual' && (
               <button
                 onClick={playPause}
                 className="w-full flex items-center justify-center gap-3 py-3 rounded-2xl font-sora font-semibold text-sm transition-all active:scale-95"
                 style={{
-                  background: isPlaying
-                    ? 'rgba(11,148,136,0.15)'
-                    : 'linear-gradient(135deg,#0b9488,#14b8a6)',
+                  background: isPlaying ? 'rgba(11,148,136,0.15)' : 'linear-gradient(135deg,#0b9488,#14b8a6)',
                   border: isPlaying ? '1px solid rgba(11,148,136,0.4)' : 'none',
                   color: '#fff',
                   boxShadow: isPlaying ? 'none' : '0 4px 16px rgba(11,148,136,0.35)',

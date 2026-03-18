@@ -10,6 +10,7 @@ import torch
 from transformers import (
     Wav2Vec2ForCTC,
     Wav2Vec2Processor,
+    AutoProcessor,
     WhisperForConditionalGeneration,
     WhisperProcessor,
     AutoModelForSeq2SeqLM,
@@ -31,7 +32,7 @@ settings = get_settings()
 class LoadedModel:
     name:   str
     model:  Any
-    extra:  Any = None          # processor / tokenizer / (processor, vocoder, embeddings)
+    extra:  Any = None          # processor / tokenizer / tuple
     loaded: bool = False
     device: str = "cpu"
 
@@ -44,17 +45,17 @@ class ModelRegistry:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info("ModelRegistry initialised on device: %s", self.device)
 
-    # ── ASR ──────────────────────────────────────────────────────────────────
+    # ── ASR — English (Whisper) ───────────────────────────────────────────────
 
     def load_asr_en(self) -> None:
         """
-        Load the English ASR model.
-        Detects Whisper vs Wav2Vec2 from the model ID and loads accordingly.
+        Load English ASR. Detects Whisper vs Wav2Vec2 from the model ID
+        and uses the appropriate classes automatically.
         """
         key      = "asr_en"
         if self._models.get(key, LoadedModel("", None)).loaded:
             return
-        model_id  = settings.hf_asr_model_en
+        model_id   = settings.hf_asr_model_en
         is_whisper = "whisper" in model_id.lower()
         logger.info("Loading English ASR model: %s", model_id)
         try:
@@ -91,31 +92,47 @@ class ModelRegistry:
             logger.error("❌ Failed to load English ASR: %s", e)
             self._models[key] = LoadedModel(name=model_id, model=None, loaded=False, device="cpu")
 
+    # ── ASR — Luganda (MMS-1B-All with lug adapter) ───────────────────────────
+
     def load_asr_lg(self) -> None:
-        key = "asr_lg"
+        """
+        Load facebook/mms-1b-all and activate the Luganda (lug) language adapter.
+
+        mms-1b-all uses AutoProcessor (not Wav2Vec2Processor) and requires
+        calling model.load_adapter("lug") + set_default_lm_head() to switch
+        the model to Luganda mode. This is the correct way per the MMS docs.
+        """
+        key      = "asr_lg"
         if self._models.get(key, LoadedModel("", None)).loaded:
             return
-        logger.info("Loading Luganda ASR model: %s", settings.hf_asr_model_lg)
+        model_id = settings.hf_asr_model_lg
+        logger.info("Loading Luganda ASR model: %s (lug adapter)", model_id)
         try:
-            processor = Wav2Vec2Processor.from_pretrained(
-                settings.hf_asr_model_lg,
+            processor = AutoProcessor.from_pretrained(
+                model_id,
                 cache_dir=settings.model_cache_dir,
                 token=settings.hf_token or None,
             )
             model = Wav2Vec2ForCTC.from_pretrained(
-                settings.hf_asr_model_lg,
+                model_id,
                 cache_dir=settings.model_cache_dir,
                 token=settings.hf_token or None,
+                ignore_mismatched_sizes=True,
             ).to(self.device)
+
+            # Activate the Luganda language adapter
+            processor.tokenizer.set_target_lang("lug")
+            model.load_adapter("lug")
             model.eval()
+
             self._models[key] = LoadedModel(
-                name=settings.hf_asr_model_lg, model=model, extra=processor,
+                name=model_id, model=model, extra=processor,
                 loaded=True, device=self.device,
             )
-            logger.info("✅ Luganda ASR loaded")
+            logger.info("✅ Luganda ASR loaded (mms-1b-all + lug adapter)")
         except Exception as e:
             logger.error("❌ Failed to load Luganda ASR: %s", e)
-            self._models[key] = LoadedModel(name=settings.hf_asr_model_lg, model=None, loaded=False, device="cpu")
+            self._models[key] = LoadedModel(name=model_id, model=None, loaded=False, device="cpu")
 
     # ── Translation ───────────────────────────────────────────────────────────
 
@@ -179,8 +196,7 @@ class ModelRegistry:
         """
         Load microsoft/speecht5_tts with a female CMU-ARCTIC speaker embedding.
         Stored under key 'tts_en_female'. The 'extra' field is a tuple of
-        (processor, vocoder, speaker_embeddings) so the TTS service can unpack
-        everything it needs in one call.
+        (processor, vocoder, speaker_embeddings).
         """
         key      = "tts_en_female"
         model_id = "microsoft/speecht5_tts"

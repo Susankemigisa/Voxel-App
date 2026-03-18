@@ -37,7 +37,6 @@ class ASRService:
     def CDLI_MODELS(self) -> dict:
         return {
             Language.EN: settings.hf_asr_cdli_en,
-            # Language.LG: "cdli/whisper-small_finetuned_..._luganda_...",
         }
 
     async def transcribe(
@@ -141,7 +140,6 @@ class ASRService:
         processor = loaded.extra
         device    = loaded.device
 
-        # Route to the correct inference method based on model class
         from transformers import WhisperForConditionalGeneration
         is_whisper = isinstance(model, WhisperForConditionalGeneration)
 
@@ -174,33 +172,46 @@ class ASRService:
             input_features = inputs.input_features.to(device)
 
             with torch.no_grad():
-                # Force English transcription — prevents Whisper guessing language
                 forced_ids = processor.get_decoder_prompt_ids(
                     language="english", task="transcribe"
                 )
                 predicted_ids = model.generate(
                     input_features,
-                    forced_decoder_ids=forced_ids,
+                    forced_decoder_ids  = forced_ids,
+                    # Suppress hallucination on short/quiet audio:
+                    # If no_speech probability is high, return empty string
+                    # rather than a confident-sounding hallucination.
+                    no_speech_threshold      = 0.6,
+                    logprob_threshold        = -1.0,
+                    compression_ratio_threshold = 2.4,
+                    condition_on_prev_tokens = False,
                 )
 
             transcript = processor.batch_decode(
                 predicted_ids, skip_special_tokens=True
             )[0].strip()
 
+            # Extra guard: if Whisper returns nothing meaningful, say so clearly
+            if not transcript:
+                logger.warning("Whisper returned empty transcript — audio may be too short or silent")
+                raise RuntimeError("No speech detected in audio")
+
             logger.info("Local Whisper → %r", transcript)
 
             return ASRResult(
                 transcript = transcript,
                 language   = language.value,
-                confidence = 0.92,   # Whisper doesn't expose token-level confidence
+                confidence = 0.92,
                 model_used = ModelName.WHISPER,
             )
 
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.error("Local Whisper inference failed: %s", e)
             raise RuntimeError(f"Transcription failed: {e}") from e
 
-    # ── Wav2Vec2 inference (Luganda / legacy) ─────────────────────────────────
+    # ── Wav2Vec2 / MMS inference (Luganda) ────────────────────────────────────
 
     def _infer_wav2vec2_sync(
         self,
@@ -232,7 +243,7 @@ class ASRService:
             confidence = round(min(max(confidence, 0.0), 1.0), 3)
 
             model_used = ModelName.WAV2VEC2 if language == Language.EN else ModelName.MMS
-            logger.debug("Local wav2vec2 → %r  confidence: %.3f", transcript, confidence)
+            logger.info("Local wav2vec2/MMS → %r  confidence: %.3f", transcript, confidence)
 
             return ASRResult(
                 transcript = transcript,
