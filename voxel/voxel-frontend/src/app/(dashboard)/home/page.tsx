@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
-import { Mic, Volume2, ChevronRight, Zap, Clock, TrendingUp, Globe, Mic2 } from 'lucide-react'
+import { Mic, Volume2, ChevronRight, Zap, Clock, TrendingUp, Globe, Mic2, Navigation } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { useAppStore } from '@/lib/store/authStore'
 import { fetchUserStats, fetchRecentSessions, formatRelative } from '@/lib/api/realtime'
@@ -63,8 +63,9 @@ export default function HomePage() {
   }, [user?.id])
 
   const QUICK_ACTIONS = [
-    { href: '/voice', icon: Mic,     title: 'Voice Input',    sub: 'Speak naturally', grad: 'linear-gradient(135deg,#0b9488,#14b8a6)', glow: 'rgba(11,148,136,0.45)' },
-    { href: '/tts',   icon: Volume2, title: 'Text to Speech', sub: 'Type & hear it',  grad: 'linear-gradient(135deg,#7c3aed,#a78bfa)', glow: 'rgba(124,58,237,0.45)' },
+    { href: '/voice',    icon: Mic,        title: 'Voice Input',    sub: 'Speak naturally',    grad: 'linear-gradient(135deg,#0b9488,#14b8a6)', glow: 'rgba(11,148,136,0.45)' },
+    { href: '/navigate', icon: Navigation, title: 'Navigate',       sub: 'Get directions',     grad: 'linear-gradient(135deg,#2563eb,#3b82f6)', glow: 'rgba(37,99,235,0.45)'  },
+    { href: '/tts',      icon: Volume2,    title: 'Text to Speech', sub: 'Type & hear it',     grad: 'linear-gradient(135deg,#7c3aed,#a78bfa)', glow: 'rgba(124,58,237,0.45)' },
   ]
 
   const STAT_ITEMS = [
@@ -105,7 +106,7 @@ export default function HomePage() {
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {QUICK_ACTIONS.map(({ href, icon: Icon, title, sub, grad, glow }) => (
           <Link key={href} href={href}
                 className="relative rounded-3xl p-5 flex flex-col gap-3 overflow-hidden transition-all active:scale-95"

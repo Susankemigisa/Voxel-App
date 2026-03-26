@@ -4,6 +4,9 @@ import { useState, useRef } from 'react'
 import { Play, Square, Volume2, Type, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useRouter } from 'next/navigation'
+import { detectNavigationIntent } from '@/hooks/useNavigationIntent'
+import { Navigation } from 'lucide-react'
 
 const VOICES = [
   { id: 'female', label: 'Female', emoji: '👩' },
@@ -19,7 +22,17 @@ const QUICK_PHRASES = [
   'Can someone assist me please?',
 ]
 
+const NAV_PHRASES = [
+  { label: 'Take me to Kampala CBD', dest: 'Kampala CBD', query: 'Kampala CBD, Uganda' },
+  { label: 'Take me to Ntinda',      dest: 'Ntinda',      query: 'Ntinda, Kampala, Uganda' },
+  { label: 'Take me to Entebbe',     dest: 'Entebbe',     query: 'Entebbe, Uganda' },
+  { label: 'Take me to Kawempe',     dest: 'Kawempe',     query: 'Kawempe, Kampala, Uganda' },
+  { label: 'Take me to Jinja',       dest: 'Jinja',       query: 'Jinja, Uganda' },
+  { label: 'Take me to Fort Portal', dest: 'Fort Portal', query: 'Fort Portal, Uganda' },
+]
+
 export default function TTSPage() {
+  const router = useRouter()
   const [text, setText]       = useState('')
   const [voice, setVoice]     = useState('female')
   const [pitch, setPitch]     = useState(50)

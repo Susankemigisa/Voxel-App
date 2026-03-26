@@ -4,6 +4,9 @@ import { useState, useRef, useEffect } from 'react'
 import { Mic, Square, Copy, CheckCircle, RefreshCw, Play, Pause, ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useRouter } from 'next/navigation'
+import { detectNavigationIntent } from '@/hooks/useNavigationIntent'
+import { Navigation } from 'lucide-react'
 
 type State = 'idle' | 'listening' | 'processing' | 'done' | 'error'
 
@@ -26,6 +29,7 @@ export default function VoicePage() {
   const [copied,     setCopied]    = useState<'raw' | 'clean' | null>(null)
   const [showRaw,    setShowRaw]   = useState(false)
   const [isPlaying,  setIsPlaying] = useState(false)
+  const router    = useRouter()
   const audioRef  = useRef<HTMLAudioElement | null>(null)
   const mediaRef  = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -91,6 +95,17 @@ export default function VoicePage() {
       setResult(data)
       setShowRaw(false)
       setIsPlaying(false)
+
+      // ── Navigation intent detection ──
+      const textToCheck = data.clean_text || data.raw_transcript || ''
+      const intent = detectNavigationIntent(textToCheck)
+      if (intent.isNavigation && intent.confidence >= 0.65) {
+        setTimeout(() => {
+          router.push(
+            `/navigate?destination=${encodeURIComponent(intent.destination)}&query=${encodeURIComponent(intent.query)}`
+          )
+        }, 1200) // short delay so user sees the transcript first
+      }
     } catch {
       setResult({
         raw_transcript: '',
