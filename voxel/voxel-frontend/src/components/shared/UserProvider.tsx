@@ -1,66 +1,67 @@
 'use client'
 
-/**
- * UserProvider — runs once when dashboard mounts.
- * Loads the user session + profile from Supabase, writes to global store.
- * All pages just read from useAppStore() — no per-page fetching needed.
- */
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { useAppStore, initials, type VoxelUser } from '@/lib/store/authStore'
+import { useAppStore, initials } from '@/lib/store/authStore'
 
+/**
+ * UserProvider
+ * Syncs the Supabase auth session into the Zustand store on mount
+ * and listens for auth state changes (sign-in / sign-out) throughout
+ * the session. Renders children immediately — no loading gate needed
+ * because Zustand's persisted state already hydrates from localStorage.
+ */
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const router    = useRouter()
-  const supabase  = createClient()
   const { setUser, setToken, logout } = useAppStore()
 
   useEffect(() => {
-    const loadUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
+    const supabase = createClient()
 
-      if (!session) {
-        router.replace('/login')
-        return
-      }
-
+    // Hydrate store from the current session on first render
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+      const u = session.user
+      const fullName    = u.user_metadata?.full_name ?? u.email ?? ''
+      const displayName = u.user_metadata?.display_name ?? fullName.split(' ')[0] ?? ''
       setToken(session.access_token)
-      const authUser = session.user
-
-      // Fetch profile from DB
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, display_name, plan, created_at')
-        .eq('id', authUser.id)
-        .single()
-
-      const fullName    = profile?.full_name    || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User'
-      const displayName = profile?.display_name || fullName
-
-      const user: VoxelUser = {
-        id:          authUser.id,
-        email:       authUser.email ?? '',
+      setUser({
+        id:          u.id,
+        email:       u.email!,
         fullName,
         displayName,
-        initials:    initials(displayName),
-        avatarUrl:   authUser.user_metadata?.avatar_url ?? null,
-        plan:        (profile?.plan as 'free' | 'pro') ?? 'free',
-        joinedAt:    authUser.created_at,
-      }
-
-      setUser(user)
-    }
-
-    loadUser()
-
-    // Keep session alive, redirect on sign-out
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') { logout(); router.replace('/login') }
-      if (event === 'TOKEN_REFRESHED' && session) setToken(session.access_token)
+        initials:    initials(displayName || fullName),
+        avatarUrl:   u.user_metadata?.avatar_url ?? null,
+        plan:        'free',
+        joinedAt:    u.created_at,
+      })
     })
 
+    // Keep store in sync on auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!session) {
+          logout()
+          return
+        }
+        const u = session.user
+        const fullName    = u.user_metadata?.full_name ?? u.email ?? ''
+        const displayName = u.user_metadata?.display_name ?? fullName.split(' ')[0] ?? ''
+        setToken(session.access_token)
+        setUser({
+          id:          u.id,
+          email:       u.email!,
+          fullName,
+          displayName,
+          initials:    initials(displayName || fullName),
+          avatarUrl:   u.user_metadata?.avatar_url ?? null,
+          plan:        'free',
+          joinedAt:    u.created_at,
+        })
+      }
+    )
+
     return () => subscription.unsubscribe()
-  }, [])
+  }, [setUser, setToken, logout])
 
   return <>{children}</>
 }

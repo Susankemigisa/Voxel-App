@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Mic, Type, User, Settings, Navigation } from 'lucide-react'
+import { Home, Mic, Volume2, User, Settings, Navigation } from 'lucide-react'
 
 const NAV_ITEMS = [
   { href: '/home',     icon: Home,       label: 'Home'     },
   { href: '/voice',    icon: Mic,        label: 'Voice'    },
   { href: '/navigate', icon: Navigation, label: 'Navigate' },
-  { href: '/tts',      icon: Type,       label: 'Speak'    },
+  { href: '/tts',      icon: Volume2,    label: 'Speak'    },
+  { href: '/profile',  icon: User,       label: 'Profile'  },
   { href: '/settings', icon: Settings,   label: 'Settings' },
 ]
 

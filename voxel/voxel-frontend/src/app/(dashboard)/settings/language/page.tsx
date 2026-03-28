@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Search, Globe, Users, ChevronLeft } from 'lucide-react'
+import { CheckCircle, Settings, Globe, User, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/layout/PageHeader'
 
@@ -24,20 +24,20 @@ export default function LanguageHubPage() {
 
   return (
     <div className="px-5 space-y-5" style={{ animation: 'fadeIn 0.4s ease-out forwards' }}>
-      <PageHeader title="Language Hub" subtitle="Languages and translation" back="/settings" />
+      <PageHeader title="Language Hub" subtitle="Globe and translation" back="/settings" />
 
       {/* Back */}
       <Link href="/settings" className="flex items-center gap-1.5 text-sm font-dm"
             style={{ color: 'var(--subtle)' }}>
-        <ChevronLeft size={16} /> Settings
+        <ChevronRight size={16} /> Settings
       </Link>
 
-      {/* Search */}
+      {/* Settings */}
       <div className="relative">
-        <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} />
+        <Settings size={15} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} />
         <input
           type="text"
-          placeholder="Search languages..."
+          placeholder="Settings languages..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="input-base pl-10"
@@ -48,7 +48,7 @@ export default function LanguageHubPage() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-sora font-semibold uppercase tracking-widest" style={{ color: 'var(--subtle)' }}>
-            Available Languages
+            Available Globe
           </p>
           <span className="badge badge-teal">{selected.length} languages</span>
         </div>
@@ -72,7 +72,7 @@ export default function LanguageHubPage() {
                   <p className="font-dm font-semibold text-sm text-white">{lang.name}</p>
                   <p className="text-xs font-dm" style={{ color: 'var(--muted)' }}>{lang.native}</p>
                 </div>
-                {active && <Check size={18} style={{ color: 'var(--teal2)' }} />}
+                {active && <CheckCircle size={18} style={{ color: 'var(--teal2)' }} />}
               </button>
             )
           })}
@@ -97,7 +97,7 @@ export default function LanguageHubPage() {
                 <span className="text-lg">{activeLanguage.flag}</span>
                 <span className="text-sm font-dm font-medium flex-1"
                       style={{ color: dialect === d ? 'var(--text)' : 'var(--subtle)' }}>{d}</span>
-                {dialect === d && <Check size={16} style={{ color: 'var(--teal2)' }} />}
+                {dialect === d && <CheckCircle size={16} style={{ color: 'var(--teal2)' }} />}
               </button>
             ))}
           </div>
@@ -108,7 +108,7 @@ export default function LanguageHubPage() {
       <div className="card"
            style={{ background: 'rgba(11,148,136,0.05)', border: '1px solid rgba(11,148,136,0.15)' }}>
         <div className="flex items-center gap-2 mb-2">
-          <Users size={16} style={{ color: 'var(--teal2)' }} />
+          <User size={16} style={{ color: 'var(--teal2)' }} />
           <span className="font-sora font-semibold text-sm text-white">Community Translations</span>
         </div>
         <p className="text-xs font-dm leading-relaxed" style={{ color: 'var(--muted)' }}>

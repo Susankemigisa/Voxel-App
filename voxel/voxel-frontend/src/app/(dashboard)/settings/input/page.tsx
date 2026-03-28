@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { Mic, Keyboard, Camera } from 'lucide-react'
+import { Mic } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 
 function Toggle({ defaultOn = false }: { defaultOn?: boolean }) {
@@ -19,8 +19,8 @@ export default function InputPage() {
       <div className="card p-0 overflow-hidden">
         {[
           { icon: Mic,      label: 'Voice Input',   sub: 'Speak to communicate',         on: true  },
-          { icon: Keyboard, label: 'Text Input',     sub: 'Type your messages',            on: true  },
-          { icon: Camera,   label: 'Sign Language',  sub: 'Use camera for visual input',   on: false },
+          { icon: Mic, label: 'Text Input',     sub: 'Volume2 your messages',            on: true  },
+          { icon: Mic,   label: 'Sign Language',  sub: 'Use camera for visual input',   on: false },
         ].map(({ icon: Icon, label, sub, on }, i, arr) => (
           <div key={label} className="flex items-center gap-4 px-4 py-4" style={{ borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(11,148,136,0.1)' }}>

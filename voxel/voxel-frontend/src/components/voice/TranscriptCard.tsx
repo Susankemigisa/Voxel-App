@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, CheckCircle, Volume2, Languages } from 'lucide-react'
+import { Copy, CheckCircle, Volume2, Globe } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { PipelineResponse } from '@/types'
 
@@ -78,7 +78,7 @@ export function TranscriptCard({ result, onReplay, onTranslate }: TranscriptCard
                       className="p-2 rounded-xl transition-colors hover:bg-white/5"
                       style={{ color: 'var(--subtle)' }}
                       title="Translate">
-                <Languages size={14} />
+                <Globe size={14} />
               </button>
             )}
             {onReplay && result.audio_base64 && (

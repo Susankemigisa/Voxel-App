@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Play, Square, Volume2, Type, ChevronRight } from 'lucide-react'
+import { Play, Square, Volume2, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useRouter } from 'next/navigation'
@@ -76,13 +76,13 @@ export default function TTSPage() {
     <div className="px-5 pb-28 space-y-5" style={{ animation: 'fadeIn 0.4s ease-out forwards' }}>
 
       {/* Header */}
-      <PageHeader title="Text to Speech" subtitle="Type and hear it" back="/home" />
+      <PageHeader title="Text to Speech" subtitle="Volume2 and hear it" back="/home" />
 
       {/* Text input */}
       <div className="card space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Type size={14} style={{ color: 'var(--teal2)' }} />
+            <Volume2 size={14} style={{ color: 'var(--teal2)' }} />
             <span className="text-xs font-sora font-semibold uppercase tracking-widest"
                   style={{ color: 'var(--subtle)' }}>Your Message</span>
           </div>
@@ -93,7 +93,7 @@ export default function TTSPage() {
         <textarea
           value={text}
           onChange={e => setText(e.target.value.slice(0, charLimit))}
-          placeholder="Type what you want to say..."
+          placeholder="Volume2 what you want to say..."
           rows={4}
           className="w-full rounded-2xl px-4 py-3 text-sm font-dm resize-none transition-all"
           style={{

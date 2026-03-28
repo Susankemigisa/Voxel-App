@@ -1,4 +1,4 @@
-import { MessageCircle, Book, Mail, ChevronRight } from 'lucide-react'
+import { Settings, Mail, ChevronRight } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 
 const FAQS = [
@@ -14,8 +14,8 @@ export default function HelpPage() {
       <PageHeader title="Help & Support" subtitle="Guides and contact" back="/settings" />
       <div className="grid grid-cols-3 gap-3">
         {[
-          { icon: Book,          label: 'User Guide', sub: 'Documentation'    },
-          { icon: MessageCircle, label: 'Live Chat',  sub: 'Talk to support'  },
+          { icon: Settings,          label: 'User Guide', sub: 'Documentation'    },
+          { icon: Settings, label: 'Live Chat',  sub: 'Talk to support'  },
           { icon: Mail,          label: 'Email',      sub: 'support@voxel.app'},
         ].map(({ icon: Icon, label, sub }) => (
           <div key={label} className="card flex flex-col items-center gap-2 py-5 cursor-pointer">

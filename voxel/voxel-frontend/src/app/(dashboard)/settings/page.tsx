@@ -1,18 +1,18 @@
 import Link from 'next/link'
-import { ChevronRight, Mic, Volume2, Globe, Shield, Bell, Lock, HelpCircle, MapPin } from 'lucide-react'
+import { ChevronRight, Mic, Volume2, Globe, Settings, Lock, Navigation } from 'lucide-react'
 
 const MAIN_CONFIG = [
   { icon: Mic,     label: 'Input Methods',    sub: 'Sign, Voice, and Text config',     href: '/settings/input'    },
   { icon: Volume2, label: 'Audio & Voice',    sub: 'Volume, TTS, and Speech recognition', href: '/settings/audio' },
   { icon: Globe,   label: 'Language Hub',     sub: 'Select system and translation language', href: '/settings/language' },
-  { icon: Shield,  label: 'Safety & SOS',     sub: 'Manage emergency contacts',        href: '/settings/safety'   },
-  { icon: MapPin,  label: 'Saved Places',    sub: 'Your frequent locations',          href: '/settings/places'   },
+  { icon: Settings,  label: 'Safety & SOS',     sub: 'Manage emergency contacts',        href: '/settings/safety'   },
+  { icon: Navigation,  label: 'Saved Places',    sub: 'Your frequent locations',          href: '/settings/places'   },
 ]
 
 const APP_PREFS = [
-  { icon: Bell,       label: 'Notifications',  sub: 'Smart alerts enabled',     href: '/settings/notifications' },
+  { icon: Settings,       label: 'Notifications',  sub: 'Smart alerts enabled',     href: '/settings/notifications' },
   { icon: Lock,       label: 'Privacy & Security', sub: 'Data and permissions', href: '/settings/privacy'       },
-  { icon: HelpCircle, label: 'Help & Support', sub: 'Guides and contact',       href: '/settings/help'          },
+  { icon: Settings, label: 'Help & Support', sub: 'Guides and contact',       href: '/settings/help'          },
 ]
 
 function SettingsRow({ icon: Icon, label, sub, href }: { icon: any; label: string; sub: string; href: string }) {

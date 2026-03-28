@@ -269,6 +269,8 @@ class ModelRegistry:
         """
         import concurrent.futures
         loaders = [
+            self.load_asr_en,       
+            self.load_tts_speecht5,
             self.load_translate_en_lg,
             self.load_translate_lg_en,
             self.load_tts_en,

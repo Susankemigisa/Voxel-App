@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { AlertCircle, Trash2, Plus, Phone, User } from 'lucide-react'
+import { Settings, Trash2, User } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { useAppStore } from '@/lib/store/authStore'
 import toast from 'react-hot-toast'
@@ -95,7 +95,7 @@ export default function SafetyPage() {
       {/* SOS info banner */}
       <div className="rounded-2xl p-4 flex items-center gap-3"
            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-        <AlertCircle size={20} style={{ color: '#f87171' }} />
+        <Settings size={20} style={{ color: '#f87171' }} />
         <div>
           <p className="text-sm font-dm font-semibold" style={{ color: 'var(--text)' }}>SOS Alerts</p>
           <p className="text-xs font-dm mt-0.5" style={{ color: 'var(--muted)' }}>
@@ -127,7 +127,7 @@ export default function SafetyPage() {
                style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
                  style={{ background: 'rgba(239,68,68,0.08)' }}>
-              <Phone size={20} style={{ color: '#f87171' }} />
+              <Settings size={20} style={{ color: '#f87171' }} />
             </div>
             <div>
               <p className="font-sora font-semibold text-sm" style={{ color: 'var(--text)' }}>No contacts yet</p>
@@ -172,7 +172,7 @@ export default function SafetyPage() {
                 <input
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  placeholder="Phone number e.g. +256 700 000 000"
+                  placeholder="Settings number e.g. +256 700 000 000"
                   type="tel"
                   className="w-full rounded-xl px-3 py-2.5 text-sm font-dm"
                   style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', outline: 'none' }}
@@ -205,7 +205,7 @@ export default function SafetyPage() {
           <button onClick={() => setAdding(true)}
                   className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl mt-3 font-dm text-sm font-medium transition-all active:scale-95"
                   style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--teal2)' }}>
-            <Plus size={16} /> Add Emergency Contact
+            <span>+</span> Add Emergency Contact
           </button>
         )}
       </div>

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     model_cache_dir:      str = "/app/models"
 
     # Inference API base URL — standard HF endpoint (router URL caused 404s)
-    hf_inference_api_url: str = "https://api-inference.huggingface.co/models"
+    hf_inference_api_url: str = "https://router.huggingface.co/hf-inference/models"
 
     # ── ASR — CDLI Whisper (Inference API, primary) ───────────────────────────
     # Ugandan English, fine-tuned on non-standard speech

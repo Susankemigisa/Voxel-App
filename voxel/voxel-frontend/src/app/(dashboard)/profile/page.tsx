@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { LogOut, Languages, Bell, ChevronRight, Shield, HelpCircle, Moon, Sun, Edit2, Check, X, User } from 'lucide-react'
+import { Settings, Globe, ChevronRight, Moon, Sun, Edit2, CheckCircle, X, User } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
@@ -111,7 +111,7 @@ export default function ProfilePage() {
                       style={{ background: '#0b9488' }}>
                 {savingName
                   ? <span className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
-                  : <Check size={13} className="text-white" />}
+                  : <CheckCircle size={13} className="text-white" />}
               </button>
               <button onClick={() => setEditingName(false)}
                       className="w-7 h-7 rounded-full flex items-center justify-center"
@@ -182,10 +182,10 @@ export default function ProfilePage() {
         <p className="text-xs font-sora font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--subtle)' }}>Account</p>
         <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
           {[
-            { icon: Languages,  label: 'Language Preferences', href: '/settings/language'      },
-            { icon: Bell,       label: 'Notifications',         href: '/settings/notifications' },
-            { icon: Shield,     label: 'Privacy & Security',    href: '/settings/privacy'       },
-            { icon: HelpCircle, label: 'Help & Support',        href: '/settings/help'          },
+            { icon: Globe,  label: 'Language Preferences', href: '/settings/language'      },
+            { icon: Settings,       label: 'Notifications',         href: '/settings/notifications' },
+            { icon: Settings,     label: 'Privacy & Security',    href: '/settings/privacy'       },
+            { icon: Settings, label: 'Help & Support',        href: '/settings/help'          },
           ].map(({ icon: Icon, label, href }, i, arr) => (
             <Link key={label} href={href}
                   className="flex items-center gap-3 px-4 py-4 transition-colors hover:bg-white/5"
@@ -207,7 +207,7 @@ export default function ProfilePage() {
               style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}>
         {loggingOut
           ? <span className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin" />
-          : <LogOut size={18} />}
+          : <Settings size={18} />}
         {loggingOut ? 'Signing out...' : 'Sign Out'}
       </button>
 

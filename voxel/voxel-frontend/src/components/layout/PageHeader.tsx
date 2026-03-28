@@ -1,12 +1,11 @@
 'use client'
 
-import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 interface PageHeaderProps {
   title:    string
   subtitle?: string
-  back?:    string   // explicit back path, defaults to router.back()
+  back?:    string
 }
 
 export function PageHeader({ title, subtitle, back }: PageHeaderProps) {
@@ -20,7 +19,7 @@ export function PageHeader({ title, subtitle, back }: PageHeaderProps) {
         style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--subtle)' }}
         aria-label="Go back"
       >
-        <ArrowLeft size={18} />
+        <span style={{ fontSize: 18, fontWeight: 'bold' }}>←</span>
       </button>
       <div className="flex-1 min-w-0">
         <h1 className="font-sora font-bold text-lg leading-tight truncate" style={{ color: 'var(--text)' }}>

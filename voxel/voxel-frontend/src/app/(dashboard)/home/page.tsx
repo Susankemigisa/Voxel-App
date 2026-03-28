@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
-import { Mic, Volume2, ChevronRight, Zap, Clock, TrendingUp, Globe, Mic2, Navigation } from 'lucide-react'
+import { Mic, Volume2, ChevronRight, Zap, Clock, TrendingUp, Globe, Navigation } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { useAppStore } from '@/lib/store/authStore'
 import { fetchUserStats, fetchRecentSessions, formatRelative } from '@/lib/api/realtime'
@@ -65,13 +65,13 @@ export default function HomePage() {
   const QUICK_ACTIONS = [
     { href: '/voice',    icon: Mic,        title: 'Voice Input',    sub: 'Speak naturally',    grad: 'linear-gradient(135deg,#0b9488,#14b8a6)', glow: 'rgba(11,148,136,0.45)' },
     { href: '/navigate', icon: Navigation, title: 'Navigate',       sub: 'Get directions',     grad: 'linear-gradient(135deg,#2563eb,#3b82f6)', glow: 'rgba(37,99,235,0.45)'  },
-    { href: '/tts',      icon: Volume2,    title: 'Text to Speech', sub: 'Type & hear it',     grad: 'linear-gradient(135deg,#7c3aed,#a78bfa)', glow: 'rgba(124,58,237,0.45)' },
+    { href: '/tts',      icon: Volume2,    title: 'Text to Speech', sub: 'Volume2 & hear it',     grad: 'linear-gradient(135deg,#7c3aed,#a78bfa)', glow: 'rgba(124,58,237,0.45)' },
   ]
 
   const STAT_ITEMS = [
     { label: 'Sessions',  value: loading ? '—' : String(stats.sessions),                             icon: TrendingUp },
     { label: 'Accuracy',  value: loading ? '—' : stats.accuracy ? `${stats.accuracy}%` : '—',        icon: Zap        },
-    { label: 'Languages', value: loading ? '—' : stats.languages ? String(stats.languages) : '—',    icon: Globe      },
+    { label: 'Globe', value: loading ? '—' : stats.languages ? String(stats.languages) : '—',    icon: Globe      },
   ]
 
   return (
@@ -173,7 +173,7 @@ export default function HomePage() {
           <div className="rounded-3xl p-6 flex flex-col items-center gap-3 text-center"
                style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(11,148,136,0.1)' }}>
-              <Mic2 size={20} style={{ color: '#14b8a6' }} />
+              <Mic size={20} style={{ color: '#14b8a6' }} />
             </div>
             <div>
               <p className="font-sora font-semibold text-sm" style={{ color: 'var(--text)' }}>No sessions yet</p>
