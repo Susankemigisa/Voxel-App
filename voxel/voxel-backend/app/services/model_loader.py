@@ -74,46 +74,74 @@ class ModelRegistry:
         """
         Load English ASR. Detects Whisper vs Wav2Vec2 from the model ID
         and uses the appropriate classes automatically.
+        
+        Supports fallback to alternative model if primary fails:
+        - Primary: hf_asr_model_en (e.g., openai/whisper-small)
+        - Fallback: hf_asr_model_en_alt (e.g., openai/whisper-base)
         """
         key      = "asr_en"
         if self._models.get(key, LoadedModel("", None)).loaded:
             return
-        model_id   = settings.hf_asr_model_en
-        is_whisper = "whisper" in model_id.lower()
-        logger.info("Loading English ASR model: %s", model_id)
-        try:
-            if is_whisper:
-                processor = WhisperProcessor.from_pretrained(
-                    model_id,
-                    cache_dir=self.cache_dir,
-                    token=settings.hf_token or None,
-                )
-                model = WhisperForConditionalGeneration.from_pretrained(
-                    model_id,
-                    cache_dir=self.cache_dir,
-                    token=settings.hf_token or None,
-                ).to(self.device)
-            else:
-                processor = Wav2Vec2Processor.from_pretrained(
-                    model_id,
-                    cache_dir=self.cache_dir,
-                    token=settings.hf_token or None,
-                )
-                model = Wav2Vec2ForCTC.from_pretrained(
-                    model_id,
-                    cache_dir=self.cache_dir,
-                    token=settings.hf_token or None,
-                ).to(self.device)
+        
+        model_ids = [settings.hf_asr_model_en]
+        if hasattr(settings, 'hf_asr_model_en_alt') and settings.hf_asr_model_en_alt:
+            model_ids.append(settings.hf_asr_model_en_alt)
+        
+        loaded_model = None
+        last_error = None
+        
+        for model_id in model_ids:
+            is_whisper = "whisper" in model_id.lower()
+            logger.info("Attempting to load English ASR model: %s", model_id)
+            
+            try:
+                if is_whisper:
+                    processor = WhisperProcessor.from_pretrained(
+                        model_id,
+                        cache_dir=self.cache_dir,
+                        token=settings.hf_token or None,
+                    )
+                    model = WhisperForConditionalGeneration.from_pretrained(
+                        model_id,
+                        cache_dir=self.cache_dir,
+                        token=settings.hf_token or None,
+                    ).to(self.device)
+                else:
+                    processor = Wav2Vec2Processor.from_pretrained(
+                        model_id,
+                        cache_dir=self.cache_dir,
+                        token=settings.hf_token or None,
+                    )
+                    model = Wav2Vec2ForCTC.from_pretrained(
+                        model_id,
+                        cache_dir=self.cache_dir,
+                        token=settings.hf_token or None,
+                    ).to(self.device)
 
-            model.eval()
-            self._models[key] = LoadedModel(
-                name=model_id, model=model, extra=processor,
-                loaded=True, device=self.device,
-            )
-            logger.info("✅ English ASR loaded (%s)", "whisper" if is_whisper else "wav2vec2")
-        except Exception as e:
-            logger.error("❌ Failed to load English ASR: %s", e)
-            self._models[key] = LoadedModel(name=model_id, model=None, loaded=False, device="cpu")
+                model.eval()
+                loaded_model = LoadedModel(
+                    name=model_id, model=model, extra=processor,
+                    loaded=True, device=self.device,
+                )
+                logger.info(
+                    "✅ English ASR loaded (%s): %s",
+                    "whisper" if is_whisper else "wav2vec2",
+                    model_id,
+                )
+                break  # Successfully loaded, exit loop
+                
+            except Exception as e:
+                logger.warning("❌ Failed to load model %s: %s", model_id, e)
+                last_error = e
+                continue  # Try next model
+        
+        if loaded_model:
+            self._models[key] = loaded_model
+        else:
+            error_msg = f"Failed to load English ASR from {model_ids}: {last_error}"
+            logger.error(error_msg)
+            self._models[key] = LoadedModel(name="", model=None, loaded=False, device="cpu")
+
 
     # ── ASR — Luganda (MMS-1B-All with lug adapter) ───────────────────────────
 

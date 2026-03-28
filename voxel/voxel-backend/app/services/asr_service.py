@@ -10,11 +10,13 @@ is unavailable or not configured.
 import asyncio
 import logging
 from dataclasses import dataclass
+from packaging import version
 
 import httpx
 import numpy as np
 import soundfile as sf
 import io
+import transformers
 
 from app.models.schemas import Language, ModelName
 from app.config import get_settings
@@ -172,20 +174,34 @@ class ASRService:
             input_features = inputs.input_features.to(device)
 
             with torch.no_grad():
-                forced_ids = processor.get_decoder_prompt_ids(
-                    language="english", task="transcribe"
-                )
-                predicted_ids = model.generate(
-                    input_features,
-                    forced_decoder_ids  = forced_ids,
-                    # Suppress hallucination on short/quiet audio:
-                    # If no_speech probability is high, return empty string
-                    # rather than a confident-sounding hallucination.
-                    no_speech_threshold      = 0.6,
-                    logprob_threshold        = -1.0,
-                    compression_ratio_threshold = 2.4,
-                    condition_on_prev_tokens = False,
-                )
+                # Handle both old and new Whisper model versions
+                # New versions (4.35+) have logits processor conflicts with forced_decoder_ids
+                transformers_version = version.parse(transformers.__version__)
+                
+                if transformers_version >= version.parse("4.35.0"):
+                    # Newer transformers: use language and task without forced_decoder_ids
+                    # to avoid ForceTokensLogitsProcessor conflicts
+                    try:
+                        predicted_ids = model.generate(
+                            input_features,
+                            language   = "english",
+                            task       = "transcribe",
+                            no_speech_threshold      = 0.6,
+                            logprob_threshold        = -1.0,
+                            compression_ratio_threshold = 2.4,
+                            condition_on_prev_tokens = False,
+                        )
+                    except Exception as e:
+                        logger.warning("New Whisper API failed, trying legacy approach: %s", e)
+                        # Fallback to legacy approach if new API fails
+                        predicted_ids = self._infer_whisper_legacy(
+                            input_features, model, processor, device
+                        )
+                else:
+                    # Older transformers: use forced_decoder_ids approach
+                    predicted_ids = self._infer_whisper_legacy(
+                        input_features, model, processor, device
+                    )
 
             transcript = processor.batch_decode(
                 predicted_ids, skip_special_tokens=True
@@ -210,6 +226,27 @@ class ASRService:
         except Exception as e:
             logger.error("Local Whisper inference failed: %s", e)
             raise RuntimeError(f"Transcription failed: {e}") from e
+
+    def _infer_whisper_legacy(
+        self, input_features, model, processor, device
+    ):
+        """
+        Legacy Whisper inference using forced_decoder_ids.
+        Used for transformers < 4.35.0 or as fallback.
+        """
+        import torch
+        
+        forced_ids = processor.get_decoder_prompt_ids(
+            language="english", task="transcribe"
+        )
+        return model.generate(
+            input_features,
+            forced_decoder_ids  = forced_ids,
+            no_speech_threshold      = 0.6,
+            logprob_threshold        = -1.0,
+            compression_ratio_threshold = 2.4,
+            condition_on_prev_tokens = False,
+        )
 
     # ── Wav2Vec2 / MMS inference (Luganda) ────────────────────────────────────
 

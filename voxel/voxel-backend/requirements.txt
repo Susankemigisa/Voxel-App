@@ -6,6 +6,7 @@ python-multipart==0.0.9
 # Config & validation
 pydantic==2.6.0
 pydantic-settings==2.1.0
+packaging==23.2
 
 # ML / ASR
 transformers==4.37.2

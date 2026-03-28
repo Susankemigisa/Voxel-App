@@ -34,13 +34,30 @@ class Settings(BaseSettings):
     #   cdli/whisper-tiny_finetuned_ugandan_english_nonstandard_speech_v1.0   (37.8M  — fastest)
     #   cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0  (242M   — recommended)
     #   cdli/whisper-large-v3_finetuned_ugandan_english_nonstandard_speech_v1.0 (2B   — most accurate)
-    hf_asr_cdli_en: str = "cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0"
+    # hf_asr_cdli_en: str = "cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0"
+    hf_asr_cdli_en: str = "openai/whisper-small"
 
     # ── ASR — local fallback / Luganda ────────────────────────────────────────
     # English: same CDLI Whisper model, loaded locally when API is unavailable
     # Luganda: mms-1b-all supports 1162 languages including Luganda (lug adapter)
-    hf_asr_model_en: str = "cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0"
+    # 
+    # Whisper model options:
+    #   openai/whisper-tiny       (39MB)  — smallest, fastest
+    #   openai/whisper-base       (140MB) — good balance
+    #   openai/whisper-small      (242MB) — recommended (DEFAULT)
+    #   openai/whisper-medium     (769MB) — better accuracy
+    #   openai/whisper-large      (2.9GB) — best accuracy
+    # 
+    # CDLI models (fine-tuned for Ugandan English):
+    #   cdli/whisper-tiny_finetuned_ugandan_english_nonstandard_speech_v1.0
+    #   cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0
+    #   cdli/whisper-large-v3_finetuned_ugandan_english_nonstandard_speech_v1.0
+    # hf_asr_model_en: str = "cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0"
+    hf_asr_model_en: str = "openai/whisper-small"
     hf_asr_model_lg: str = "facebook/mms-1b-all"
+    
+    # Alternative Whisper models for fallback or testing
+    hf_asr_model_en_alt: str = "openai/whisper-base"  # Fallback if small fails
 
     # ── Translation models ────────────────────────────────────────────────────
     hf_translate_en_lg: str = "Helsinki-NLP/opus-mt-en-lg"
