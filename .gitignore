@@ -1,81 +1,46 @@
-# ─────────────────────────────────────────────
-#  VOXEL — monorepo .gitignore
-#  Next.js (frontend) + FastAPI (backend)
-# ─────────────────────────────────────────────
+# Environment variables
 
 
-# ── Environment & secrets ─────────────────────
-.env
-.env.local
-.env.*.local
-.env.development
-.env.production
-.env.test
-*.pem
-*.key
-*.cert
-
-
-# ── Python / FastAPI ──────────────────────────
+# Backend - Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
+*$py.class
 *.so
-*.egg
-*.egg-info/
-dist/
+.Python
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
 .eggs/
-.venv/
-venv/
-env/
-ENV/
-pip-wheel-metadata/
-.mypy_cache/
-.dmypy.json
-.ruff_cache/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 .pytest_cache/
 .coverage
-coverage.xml
 htmlcov/
-*.log
 
-# HuggingFace model weights (large binary files)
-models/
-*.bin
-*.safetensors
-*.ot
-*.onnx
-*.pt
-*.pth
-
-
-# ── Node / Next.js ────────────────────────────
+# Frontend - Node
 node_modules/
 .next/
 out/
 .turbo/
-.vercel/
-.swc/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-*.tsbuildinfo
-next-env.d.ts
+*.log
 
-
-# ── OS & editor ───────────────────────────────
-.DS_Store
-Thumbs.db
-.idea/
+# IDE
 .vscode/
+.idea/
 *.swp
 *.swo
 *~
+.DS_Store
 
-
-# ── Misc ──────────────────────────────────────
-*.zip
-*.tar.gz
+# ML/Audio models (if large, can be added separately)
+# Note: Keep /voxel-backend/app/models/ - this is project code, not a model directory
