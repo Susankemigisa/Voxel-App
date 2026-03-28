@@ -28,6 +28,20 @@ class Settings(BaseSettings):
     # Inference API base URL — standard HF endpoint (router URL caused 404s)
     hf_inference_api_url: str = "https://router.huggingface.co/hf-inference/models"
 
+    # ASR runtime strategy (English):
+    #   auto      -> try Modal, then HF inference, then local fallback
+    #   modal     -> Modal endpoint only
+    #   inference -> HF inference API only
+    #   local     -> local model only (skip remote inference)
+    asr_en_strategy: str = "local"
+
+    # Modal ASR endpoint settings (used when strategy=modal or strategy=auto)
+    # Example URL:
+    # https://xxxxx--whisper-endpoint-transcriber-transcribe.modal.run
+    asr_modal_url: str = ""
+    asr_modal_token: str = ""
+    asr_modal_timeout_s: float = 90.0
+
     # ── ASR — CDLI Whisper (Inference API, primary) ───────────────────────────
     # Ugandan English, fine-tuned on non-standard speech
     # Options (trade off size vs accuracy):
@@ -36,6 +50,10 @@ class Settings(BaseSettings):
     #   cdli/whisper-large-v3_finetuned_ugandan_english_nonstandard_speech_v1.0 (2B   — most accurate)
     # hf_asr_cdli_en: str = "cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0"
     hf_asr_cdli_en: str = "openai/whisper-small"
+
+    # Inference API model for English ASR.
+    # Keep separate from local model so you can tune each path independently.
+    hf_asr_inference_model_en: str = "openai/whisper-small"
 
     # ── ASR — local fallback / Luganda ────────────────────────────────────────
     # English: same CDLI Whisper model, loaded locally when API is unavailable
@@ -63,9 +81,28 @@ class Settings(BaseSettings):
     hf_translate_en_lg: str = "Helsinki-NLP/opus-mt-en-lg"
     hf_translate_lg_en: str = "Helsinki-NLP/opus-mt-lg-en"
 
+    # Translation runtime strategy:
+    #   auto  -> try Modal endpoint first, then local fallback
+    #   modal -> Modal endpoint only
+    #   local -> local model only
+    translate_strategy: str = "local"
+    translate_modal_en_lg_url: str = ""
+    translate_modal_lg_en_url: str = ""
+    translate_modal_token: str = ""
+    translate_modal_timeout_s: float = 45.0
+
     # ── TTS models ────────────────────────────────────────────────────────────
     hf_tts_en: str = "facebook/mms-tts-eng"
     hf_tts_lg: str = "facebook/mms-tts-lug"
+
+    # TTS runtime strategy:
+    #   auto  -> try Modal endpoint first, then local fallback
+    #   modal -> Modal endpoint only
+    #   local -> local model only
+    tts_strategy: str = "local"
+    tts_modal_url: str = ""
+    tts_modal_token: str = ""
+    tts_modal_timeout_s: float = 90.0
 
     # ── Audio limits ──────────────────────────────────────────────────────────
     max_audio_duration_s: int   = 30

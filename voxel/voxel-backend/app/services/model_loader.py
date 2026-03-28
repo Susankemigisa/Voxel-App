@@ -319,14 +319,30 @@ class ModelRegistry:
         ASR and SpeechT5 are lazy-loaded on first request.
         """
         import concurrent.futures
-        loaders = [
-            self.load_asr_en,       
-            self.load_tts_speecht5,
-            self.load_translate_en_lg,
-            self.load_translate_lg_en,
-            self.load_tts_en,
-            self.load_tts_lg,
-        ]
+
+        asr_strategy = (settings.asr_en_strategy or "auto").strip().lower()
+        translate_strategy = (settings.translate_strategy or "local").strip().lower()
+        tts_strategy = (settings.tts_strategy or "local").strip().lower()
+
+        preload_local_asr = asr_strategy in {"local", "auto"}
+        preload_local_translate = translate_strategy in {"local", "auto"}
+        preload_local_tts = tts_strategy in {"local", "auto"}
+
+        loaders = []
+        if preload_local_asr:
+            loaders.insert(0, self.load_asr_en)
+        if preload_local_tts:
+            loaders.extend([
+                self.load_tts_speecht5,
+                self.load_tts_en,
+                self.load_tts_lg,
+            ])
+        if preload_local_translate:
+            loaders.extend([
+                self.load_translate_en_lg,
+                self.load_translate_lg_en,
+            ])
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
             futures = [pool.submit(fn) for fn in loaders]
             concurrent.futures.wait(futures)

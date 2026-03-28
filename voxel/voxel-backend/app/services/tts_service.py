@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import numpy as np
 import soundfile as sf
 import torch
+import httpx
 
 from app.services.model_loader import model_registry
 from app.models.schemas import Language, VoiceGender
@@ -39,6 +40,13 @@ class TTSResult:
 
 class TTSService:
 
+    def _strategy(self) -> str:
+        strategy = (settings.tts_strategy or "local").strip().lower()
+        if strategy not in {"auto", "modal", "local"}:
+            logger.warning("Invalid TTS_STRATEGY=%r, defaulting to 'local'", strategy)
+            return "local"
+        return strategy
+
     async def synthesize(
         self,
         text:     str,
@@ -48,6 +56,31 @@ class TTSService:
         rate:     float        = 1.0,   # speaking rate — 1.0 = natural speed
     ) -> TTSResult:
         """Convert text to speech and return base64 WAV audio."""
+
+        strategy = self._strategy()
+
+        if strategy in {"auto", "modal"}:
+            if settings.tts_modal_url:
+                try:
+                    return await self._synth_modal(text, language, voice, pitch, rate)
+                except Exception as e:
+                    if strategy == "modal":
+                        raise RuntimeError(f"Modal TTS failed: {e}") from e
+                    logger.warning("Modal TTS failed — falling back to local: %s", e)
+            elif strategy == "modal":
+                raise RuntimeError("Modal TTS mode requires TTS_MODAL_URL to be set")
+
+        return await self._synthesize_local(text, language, voice, pitch, rate)
+
+    async def _synthesize_local(
+        self,
+        text:     str,
+        language: Language,
+        voice:    VoiceGender,
+        pitch:    float,
+        rate:     float,
+    ) -> TTSResult:
+        """Local synthesis using loaded backend models."""
 
         # Female English voice uses SpeechT5; everything else uses MMS
         use_speecht5 = (voice == VoiceGender.FEMALE and language == Language.EN)
@@ -79,6 +112,45 @@ class TTSService:
             language, voice, pitch, rate,
         )
         return result
+
+    async def _synth_modal(
+        self,
+        text: str,
+        language: Language,
+        voice: VoiceGender,
+        pitch: float,
+        rate: float,
+    ) -> TTSResult:
+        headers = {"Content-Type": "application/json"}
+        if settings.tts_modal_token:
+            headers["Authorization"] = f"Bearer {settings.tts_modal_token}"
+
+        payload = {
+            "text": text,
+            "language": language.value,
+            "voice": voice.value,
+            "pitch": pitch,
+            "rate": rate,
+        }
+
+        async with httpx.AsyncClient(timeout=settings.tts_modal_timeout_s) as client:
+            response = await client.post(settings.tts_modal_url, json=payload, headers=headers)
+
+        if response.status_code != 200:
+            raise RuntimeError(f"Modal endpoint returned {response.status_code}: {response.text}")
+
+        result = response.json()
+        audio_base64 = result.get("audio_base64")
+        if not audio_base64:
+            raise RuntimeError("Empty audio_base64 from Modal TTS endpoint")
+
+        return TTSResult(
+            audio_base64=audio_base64,
+            duration_ms=int(result.get("duration_ms", 0)),
+            sample_rate=int(result.get("sample_rate", 16000)),
+            voice=str(result.get("voice", voice.value)),
+            text=str(result.get("text", text)),
+        )
 
     # ── SpeechT5 (female English) ─────────────────────────────────────────────
 

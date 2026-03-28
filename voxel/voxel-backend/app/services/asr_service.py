@@ -1,8 +1,7 @@
 """
 ASRService — Stage 2 of the Voice Reconstruction Pipeline.
 
-Uses the HuggingFace Inference API to run CDLI Whisper models
-fine-tuned on Ugandan English non-standard speech.
+Uses the HuggingFace Inference API for Whisper ASR.
 
 Falls back to the local Whisper model if the Inference API
 is unavailable or not configured.
@@ -36,10 +35,25 @@ class ASRResult:
 class ASRService:
 
     @property
-    def CDLI_MODELS(self) -> dict:
+    def INFERENCE_MODELS(self) -> dict:
         return {
-            Language.EN: settings.hf_asr_cdli_en,
+            Language.EN: (
+                settings.hf_asr_inference_model_en
+                or settings.hf_asr_model_en
+                or settings.hf_asr_cdli_en
+            ),
         }
+
+    def _strategy_for(self, language: Language) -> str:
+        # Current strategy is configurable for English; Luganda remains local.
+        if language != Language.EN:
+            return "local"
+
+        strategy = (settings.asr_en_strategy or "auto").strip().lower()
+        if strategy not in {"auto", "modal", "inference", "local"}:
+            logger.warning("Invalid ASR_EN_STRATEGY=%r, defaulting to 'auto'", strategy)
+            return "auto"
+        return strategy
 
     async def transcribe(
         self,
@@ -48,21 +62,102 @@ class ASRService:
     ) -> ASRResult:
         """
         Transcribe preprocessed 16 kHz float32 audio.
-        Tries the HuggingFace Inference API first (CDLI Whisper),
-        then falls back to local Whisper model if that fails.
+        Uses config-driven routing:
+        - auto: Modal first, then HF inference, then local fallback
+        - modal: Modal only
+        - inference: HF inference only
+        - local: local only
         """
-        model_id = self.CDLI_MODELS.get(language)
+        strategy = self._strategy_for(language)
+        model_id = self.INFERENCE_MODELS.get(language)
 
-        if model_id and settings.hf_token:
+        # 1) Modal endpoint path
+        if strategy in {"auto", "modal"}:
+            if settings.asr_modal_url:
+                try:
+                    return await self._transcribe_modal(audio, language)
+                except Exception as e:
+                    if strategy == "modal":
+                        raise RuntimeError(f"Modal ASR failed: {e}") from e
+                    logger.warning("Modal ASR failed — trying HF/local fallback: %s", e)
+            elif strategy == "modal":
+                raise RuntimeError("Modal-only mode requires ASR_MODAL_URL to be set")
+
+        # 2) HF Inference API path
+        if strategy in {"auto", "inference"} and model_id and settings.hf_token:
             try:
                 return await self._transcribe_inference_api(audio, model_id, language)
             except Exception as e:
+                if strategy == "inference":
+                    raise RuntimeError(
+                        f"Inference-only mode failed for model '{model_id}': {e}"
+                    ) from e
                 logger.warning(
                     "Inference API failed (%s) — falling back to local model: %s",
                     model_id, e,
                 )
 
+        if strategy == "inference" and (not model_id or not settings.hf_token):
+            raise RuntimeError(
+                "Inference-only mode requires HF token and a configured inference model"
+            )
+
         return await self._transcribe_local(audio, language)
+
+    # ── Modal endpoint ASR ────────────────────────────────────────────────────
+
+    async def _transcribe_modal(
+        self,
+        audio: np.ndarray,
+        language: Language,
+    ) -> ASRResult:
+        buf = io.BytesIO()
+        sf.write(buf, audio, settings.target_sample_rate, format="WAV", subtype="PCM_16")
+        wav_bytes = buf.getvalue()
+
+        headers = {}
+        if settings.asr_modal_token:
+            headers["Authorization"] = f"Bearer {settings.asr_modal_token}"
+
+        files = {
+            "wav": ("audio.wav", wav_bytes, "audio/wav"),
+        }
+        data = {
+            "language": language.value if language else "en",
+            "use_word_timestamps": "false",
+        }
+
+        async with httpx.AsyncClient(timeout=settings.asr_modal_timeout_s) as client:
+            response = await client.post(
+                settings.asr_modal_url,
+                headers=headers,
+                files=files,
+                data=data,
+            )
+
+        if response.status_code != 200:
+            raise RuntimeError(f"Modal endpoint returned {response.status_code}: {response.text}")
+
+        result = response.json()
+        transcript = (result.get("transcription") or result.get("text") or "").strip()
+        if not transcript:
+            raise RuntimeError("Empty transcript from Modal endpoint")
+
+        confidence = 0.95
+        confidences = result.get("confidences")
+        if isinstance(confidences, list) and confidences:
+            try:
+                confidence = float(sum(confidences) / len(confidences))
+            except Exception:
+                confidence = 0.95
+
+        logger.info("Modal Whisper → %r", transcript[:80])
+        return ASRResult(
+            transcript=transcript,
+            language=language.value,
+            confidence=max(0.0, min(1.0, confidence)),
+            model_used=ModelName.WHISPER,
+        )
 
     # ── HuggingFace Inference API ─────────────────────────────────────────────
 
@@ -107,7 +202,7 @@ class ASRService:
         if not transcript:
             raise RuntimeError("Empty transcript from Inference API")
 
-        logger.info("CDLI Whisper [%s] → %r", model_id.split("/")[-1], transcript[:80])
+        logger.info("Inference Whisper [%s] → %r", model_id.split("/")[-1], transcript[:80])
 
         return ASRResult(
             transcript = transcript,
