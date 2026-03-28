@@ -281,6 +281,7 @@ export default function VoicePage() {
   const [state,     setState]     = useState<State>('idle')
   const [language,  setLanguage]  = useState<Language>('en')
   const [mode,      setMode]      = useState<OutputMode>('both')
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
   const [step,      setStep]      = useState(-1)
   const [result,    setResult]    = useState<PipelineResponse | null>(null)
   const [copied,    setCopied]    = useState<'raw' | 'clean' | null>(null)
@@ -527,7 +528,7 @@ export default function VoicePage() {
               </p>
               {apiError && (
                 <p className="text-xs font-dm text-center" style={{ color: 'var(--muted)' }}>
-                  Make sure the backend is running on port 8000
+                    Backend URL: {backendUrl}
                 </p>
               )}
             </div>

@@ -5,6 +5,7 @@ All services pull from this singleton so models are only loaded once.
 import logging
 from dataclasses import dataclass
 from typing import Optional, Any
+from pathlib import Path
 
 import torch
 from transformers import (
@@ -43,7 +44,29 @@ class ModelRegistry:
     def __init__(self):
         self._models: dict[str, LoadedModel] = {}
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.cache_dir = self._resolve_cache_dir()
         logger.info("ModelRegistry initialised on device: %s", self.device)
+        logger.info("Model cache directory: %s", self.cache_dir)
+
+    def _resolve_cache_dir(self) -> str:
+        """Choose a writable cache directory for model downloads."""
+        primary = Path(settings.model_cache_dir).expanduser()
+        fallback = Path.home() / ".cache" / "voxel" / "models"
+
+        for candidate in (primary, fallback):
+            try:
+                candidate.mkdir(parents=True, exist_ok=True)
+                probe = candidate / ".write_test"
+                probe.write_text("ok", encoding="utf-8")
+                probe.unlink(missing_ok=True)
+                return str(candidate)
+            except Exception:
+                continue
+
+        raise RuntimeError(
+            "No writable model cache directory found. "
+            f"Tried: '{primary}' and '{fallback}'."
+        )
 
     # ── ASR — English (Whisper) ───────────────────────────────────────────────
 
@@ -62,23 +85,23 @@ class ModelRegistry:
             if is_whisper:
                 processor = WhisperProcessor.from_pretrained(
                     model_id,
-                    cache_dir=settings.model_cache_dir,
+                    cache_dir=self.cache_dir,
                     token=settings.hf_token or None,
                 )
                 model = WhisperForConditionalGeneration.from_pretrained(
                     model_id,
-                    cache_dir=settings.model_cache_dir,
+                    cache_dir=self.cache_dir,
                     token=settings.hf_token or None,
                 ).to(self.device)
             else:
                 processor = Wav2Vec2Processor.from_pretrained(
                     model_id,
-                    cache_dir=settings.model_cache_dir,
+                    cache_dir=self.cache_dir,
                     token=settings.hf_token or None,
                 )
                 model = Wav2Vec2ForCTC.from_pretrained(
                     model_id,
-                    cache_dir=settings.model_cache_dir,
+                    cache_dir=self.cache_dir,
                     token=settings.hf_token or None,
                 ).to(self.device)
 
@@ -110,12 +133,12 @@ class ModelRegistry:
         try:
             processor = AutoProcessor.from_pretrained(
                 model_id,
-                cache_dir=settings.model_cache_dir,
+                cache_dir=self.cache_dir,
                 token=settings.hf_token or None,
             )
             model = Wav2Vec2ForCTC.from_pretrained(
                 model_id,
-                cache_dir=settings.model_cache_dir,
+                cache_dir=self.cache_dir,
                 token=settings.hf_token or None,
                 ignore_mismatched_sizes=True,
             ).to(self.device)
@@ -142,10 +165,10 @@ class ModelRegistry:
         logger.info("Loading translation model: %s", model_id)
         try:
             tokenizer = AutoTokenizer.from_pretrained(
-                model_id, cache_dir=settings.model_cache_dir, token=settings.hf_token or None
+                model_id, cache_dir=self.cache_dir, token=settings.hf_token or None
             )
             model = AutoModelForSeq2SeqLM.from_pretrained(
-                model_id, cache_dir=settings.model_cache_dir, token=settings.hf_token or None
+                model_id, cache_dir=self.cache_dir, token=settings.hf_token or None
             ).to(self.device)
             model.eval()
             self._models[key] = LoadedModel(
@@ -170,10 +193,10 @@ class ModelRegistry:
         logger.info("Loading TTS model: %s", model_id)
         try:
             tokenizer = VitsTokenizer.from_pretrained(
-                model_id, cache_dir=settings.model_cache_dir, token=settings.hf_token or None
+                model_id, cache_dir=self.cache_dir, token=settings.hf_token or None
             )
             model = VitsModel.from_pretrained(
-                model_id, cache_dir=settings.model_cache_dir, token=settings.hf_token or None
+                model_id, cache_dir=self.cache_dir, token=settings.hf_token or None
             ).to(self.device)
             model.eval()
             self._models[key] = LoadedModel(
@@ -208,19 +231,19 @@ class ModelRegistry:
 
             processor = SpeechT5Processor.from_pretrained(
                 model_id,
-                cache_dir=settings.model_cache_dir,
+                cache_dir=self.cache_dir,
                 token=settings.hf_token or None,
             )
             model = SpeechT5ForTextToSpeech.from_pretrained(
                 model_id,
-                cache_dir=settings.model_cache_dir,
+                cache_dir=self.cache_dir,
                 token=settings.hf_token or None,
             ).to(self.device)
             model.eval()
 
             vocoder = SpeechT5HifiGan.from_pretrained(
                 "microsoft/speecht5_hifigan",
-                cache_dir=settings.model_cache_dir,
+                cache_dir=self.cache_dir,
                 token=settings.hf_token or None,
             ).to(self.device)
             vocoder.eval()
@@ -229,7 +252,7 @@ class ModelRegistry:
             embeddings_dataset = load_dataset(
                 "Matthijs/cmu-arctic-xvectors",
                 split="validation",
-                cache_dir=settings.model_cache_dir,
+                cache_dir=self.cache_dir,
             )
             speaker_embeddings = torch.tensor(
                 embeddings_dataset[7306]["xvector"]
