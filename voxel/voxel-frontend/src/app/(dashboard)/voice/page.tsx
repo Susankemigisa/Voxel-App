@@ -9,15 +9,19 @@ import toast from 'react-hot-toast'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useRouter } from 'next/navigation'
 import { detectNavigationIntent } from '@/hooks/useNavigationIntent'
-import { apiClient } from '@/lib/api/client'   // ← uses correct base URL always
+import { apiClient } from '@/lib/api/client'
+import { createClient } from '@/lib/supabase'
+import { useAppStore } from '@/lib/store/authStore'
 import type { PipelineResponse, Language, OutputMode } from '@/types'
 
 type State = 'idle' | 'listening' | 'processing' | 'done' | 'error'
 
 const STEP_LABELS = ['Cleaning audio', 'Transcribing speech', 'Reconstructing text', 'Generating voice']
 
-// ── Animated orb ──────────────────────────────────────────────────────────────
+// Singleton supabase client
+const supabase = createClient()
 
+// ── Animated orb ──────────────────────────────────────────────────────────────
 function MicOrb({ state, onClick }: { state: State; onClick: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const frameRef  = useRef(0)
@@ -109,7 +113,6 @@ function MicOrb({ state, onClick }: { state: State; onClick: () => void }) {
 }
 
 // ── Wave bars ─────────────────────────────────────────────────────────────────
-
 function WaveBars() {
   return (
     <div className="flex items-end justify-center gap-[3px]" style={{ height: 28 }}>
@@ -131,7 +134,6 @@ function WaveBars() {
 }
 
 // ── Processing steps ──────────────────────────────────────────────────────────
-
 function ProcessingSteps({ step }: { step: number }) {
   return (
     <div className="w-full max-w-[260px] space-y-2">
@@ -164,7 +166,6 @@ function ProcessingSteps({ step }: { step: number }) {
 }
 
 // ── Result view ───────────────────────────────────────────────────────────────
-
 function ResultView({
   result, copied, showRaw, rawDiffers,
   onCopy, onToggleRaw, onPlay, isPlaying, hasAudio,
@@ -198,7 +199,6 @@ function ResultView({
         </div>
       )}
 
-      {/* Raw transcript */}
       {result.raw_transcript && (
         <div className="rounded-2xl overflow-hidden"
              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)' }}>
@@ -235,7 +235,6 @@ function ResultView({
         </div>
       )}
 
-      {/* Cleaned text */}
       <div className="rounded-2xl p-4"
            style={{ background: 'rgba(11,148,136,0.06)', border: '1px solid rgba(11,148,136,0.25)' }}>
         <div className="flex items-center justify-between mb-2">
@@ -256,7 +255,6 @@ function ResultView({
         </p>
       </div>
 
-      {/* Audio playback */}
       {hasAudio && (
         <button onClick={onPlay}
                 className="w-full flex items-center justify-center gap-3 py-3 rounded-2xl font-sora font-semibold text-sm transition-all active:scale-95"
@@ -276,12 +274,11 @@ function ResultView({
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-
 export default function VoicePage() {
   const [state,     setState]     = useState<State>('idle')
   const [language,  setLanguage]  = useState<Language>('en')
   const [mode,      setMode]      = useState<OutputMode>('both')
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
   const [step,      setStep]      = useState(-1)
   const [result,    setResult]    = useState<PipelineResponse | null>(null)
   const [copied,    setCopied]    = useState<'raw' | 'clean' | null>(null)
@@ -290,6 +287,7 @@ export default function VoicePage() {
   const [apiError,  setApiError]  = useState<string | null>(null)
 
   const router    = useRouter()
+  const user      = useAppStore(s => s.user)   // ← get current user for saving sessions
   const audioRef  = useRef<HTMLAudioElement | null>(null)
   const mediaRef  = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -302,7 +300,6 @@ export default function VoicePage() {
     : false
 
   const processAudio = useCallback(async (blob: Blob) => {
-    // Animate the steps while the real request runs in parallel
     const stepPromise = (async () => {
       for (let i = 0; i < STEP_LABELS.length; i++) {
         setStep(i)
@@ -310,7 +307,6 @@ export default function VoicePage() {
       }
     })()
 
-    // ── Real API call via apiClient (correct base URL, auth headers) ──
     const apiPromise = (async (): Promise<PipelineResponse> => {
       const form = new FormData()
       form.append('audio',       blob, 'recording.webm')
@@ -327,13 +323,11 @@ export default function VoicePage() {
       return data
     })()
 
-    // Wait for both the animation AND the API
     const [, data] = await Promise.allSettled([stepPromise, apiPromise])
 
     setStep(-1)
 
     if (data.status === 'rejected') {
-      // Surface the real error so you can debug it
       const msg = (data.reason as any)?.response?.data?.detail
         ?? (data.reason as any)?.message
         ?? 'Pipeline failed'
@@ -346,7 +340,6 @@ export default function VoicePage() {
     const result = data.value
     setApiError(null)
 
-    // Set up audio playback if backend returned audio
     if (result.audio_base64 && mode !== 'visual') {
       try {
         const bytes = atob(result.audio_base64)
@@ -367,7 +360,24 @@ export default function VoicePage() {
     setIsPlaying(false)
     setState('done')
 
-    // Navigation intent
+    // ── Save session to Supabase transcription_history ──────────────────────
+    // This makes "Your Activity" and "Recent Sessions" on the home page work.
+    if (user?.id) {
+      supabase.from('transcription_history').insert({
+        user_id:     user.id,
+        transcript:  result.raw_transcript  ?? '',
+        clean_text:  result.clean_text      ?? '',
+        language:    language,
+        confidence:  result.confidence      ?? null,
+        pipeline_ms: result.pipeline_ms     ?? null,
+        created_at:  new Date().toISOString(),
+      }).then(({ error }) => {
+        if (error) console.warn('Session save failed:', error.message)
+      })
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
+    // Navigation intent detection
     const textToCheck = result.clean_text || result.raw_transcript || ''
     const intent = detectNavigationIntent(textToCheck)
     if (intent.isNavigation && intent.confidence >= 0.65) {
@@ -375,7 +385,7 @@ export default function VoicePage() {
         `/navigate?destination=${encodeURIComponent(intent.destination)}&query=${encodeURIComponent(intent.query)}`
       ), 1200)
     }
-  }, [language, mode, router])
+  }, [language, mode, router, user])
 
   const start = async () => {
     try {
@@ -520,7 +530,6 @@ export default function VoicePage() {
             </p>
           )}
 
-          {/* Show real error details instead of a vague fallback */}
           {state === 'error' && (
             <div className="w-full space-y-2">
               <p className="text-xs font-dm text-center text-red-400">
@@ -528,7 +537,7 @@ export default function VoicePage() {
               </p>
               {apiError && (
                 <p className="text-xs font-dm text-center" style={{ color: 'var(--muted)' }}>
-                    Backend URL: {backendUrl}
+                  Backend URL: {backendUrl}
                 </p>
               )}
             </div>

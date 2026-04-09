@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Mic, Volume2, ChevronRight, Zap, Clock, TrendingUp, Globe, Navigation } from 'lucide-react'
-import { createClient } from '@/lib/supabase'
 import { useAppStore } from '@/lib/store/authStore'
-import { fetchUserStats, fetchRecentSessions, formatRelative } from '@/lib/api/realtime'
+import { fetchUserStats } from '@/lib/api/realtime'
+import { useRef } from 'react'
 
 function useGreeting(name: string) {
   const h    = new Date().getHours()
@@ -46,32 +46,27 @@ function AnimatedWave() {
 }
 
 export default function HomePage() {
-  // Read from global store — no extra fetch needed
   const user     = useAppStore(s => s.user)
   const greeting = useGreeting(user?.displayName?.split(' ')[0] || '')
 
   const [stats,   setStats]   = useState({ sessions: 0, accuracy: 0, languages: 0 })
-  const [recent,  setRecent]  = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!user?.id) return
-    Promise.all([
-      fetchUserStats(user.id),
-      fetchRecentSessions(user.id, 3),
-    ]).then(([s, r]) => { setStats(s); setRecent(r); setLoading(false) })
+    fetchUserStats(user.id).then(s => { setStats(s); setLoading(false) })
   }, [user?.id])
 
   const QUICK_ACTIONS = [
-    { href: '/voice',    icon: Mic,        title: 'Voice Input',    sub: 'Speak naturally',    grad: 'linear-gradient(135deg,#0b9488,#14b8a6)', glow: 'rgba(11,148,136,0.45)' },
-    { href: '/navigate', icon: Navigation, title: 'Navigate',       sub: 'Get directions',     grad: 'linear-gradient(135deg,#2563eb,#3b82f6)', glow: 'rgba(37,99,235,0.45)'  },
-    { href: '/tts',      icon: Volume2,    title: 'Text to Speech', sub: 'Volume2 & hear it',     grad: 'linear-gradient(135deg,#7c3aed,#a78bfa)', glow: 'rgba(124,58,237,0.45)' },
+    { href: '/voice',    icon: Mic,        title: 'Voice Input',    sub: 'Speak naturally',   grad: 'linear-gradient(135deg,#0b9488,#14b8a6)', glow: 'rgba(11,148,136,0.45)' },
+    { href: '/navigate', icon: Navigation, title: 'Navigate',       sub: 'Get directions',    grad: 'linear-gradient(135deg,#2563eb,#3b82f6)', glow: 'rgba(37,99,235,0.45)'  },
+    { href: '/tts',      icon: Volume2,    title: 'Text to Speech', sub: 'Convert & hear it', grad: 'linear-gradient(135deg,#7c3aed,#a78bfa)', glow: 'rgba(124,58,237,0.45)' },
   ]
 
   const STAT_ITEMS = [
-    { label: 'Sessions',  value: loading ? '—' : String(stats.sessions),                             icon: TrendingUp },
-    { label: 'Accuracy',  value: loading ? '—' : stats.accuracy ? `${stats.accuracy}%` : '—',        icon: Zap        },
-    { label: 'Globe', value: loading ? '—' : stats.languages ? String(stats.languages) : '—',    icon: Globe      },
+    { label: 'Sessions',  value: loading ? '—' : String(stats.sessions),                          icon: TrendingUp },
+    { label: 'Accuracy',  value: loading ? '—' : stats.accuracy ? `${stats.accuracy}%` : '—',     icon: Zap        },
+    { label: 'Languages', value: loading ? '—' : stats.languages ? String(stats.languages) : '—', icon: Globe      },
   ]
 
   return (
@@ -128,7 +123,9 @@ export default function HomePage() {
 
       {/* Stats */}
       <div className="rounded-3xl p-4" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-        <p className="text-xs font-sora font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>Your Activity</p>
+        <p className="text-xs font-sora font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>
+          Your Activity
+        </p>
         <div className="flex items-center justify-between">
           {STAT_ITEMS.map(({ label, value, icon: Icon }, i, arr) => (
             <div key={label} className="flex items-center flex-1">
@@ -151,67 +148,24 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Recent sessions */}
-      <div>
-        <p className="text-xs font-sora font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--subtle)' }}>
-          Recent Sessions
-        </p>
-        {loading ? (
-          <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            {[1,2,3].map(i => (
-              <div key={i} className="flex items-center gap-3 px-4 py-4 animate-pulse"
-                   style={{ borderBottom: i < 3 ? '1px solid var(--border)' : 'none' }}>
-                <div className="w-8 h-8 rounded-xl" style={{ background: 'var(--border)' }} />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-3 rounded-full w-3/4" style={{ background: 'var(--border)' }} />
-                  <div className="h-2.5 rounded-full w-1/3" style={{ background: 'var(--border)' }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : recent.length === 0 ? (
-          <div className="rounded-3xl p-6 flex flex-col items-center gap-3 text-center"
-               style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(11,148,136,0.1)' }}>
-              <Mic size={20} style={{ color: '#14b8a6' }} />
-            </div>
-            <div>
-              <p className="font-sora font-semibold text-sm" style={{ color: 'var(--text)' }}>No sessions yet</p>
-              <p className="font-dm text-xs mt-1" style={{ color: 'var(--muted)' }}>
-                Your voice sessions will appear here after you use Voice Input
-              </p>
-            </div>
-            <Link href="/voice" className="text-xs font-dm font-semibold px-4 py-2 rounded-xl"
-                  style={{ background: 'rgba(11,148,136,0.12)', color: '#14b8a6' }}>
-              Try Voice Input →
-            </Link>
-          </div>
-        ) : (
-          <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            {recent.map(({ id, transcript, clean_text, language, created_at }, i) => (
-              <div key={id} className="flex items-center gap-3 px-4 py-4 transition-colors hover:bg-white/5"
-                   style={{ borderBottom: i < recent.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                     style={{ background: 'rgba(11,148,136,0.1)' }}>
-                  <Clock size={13} style={{ color: '#14b8a6' }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-dm truncate" style={{ color: 'var(--text)' }}>
-                    "{clean_text || transcript}"
-                  </p>
-                  <p className="text-xs font-dm mt-0.5" style={{ color: 'var(--muted)' }}>
-                    {formatRelative(created_at)}
-                  </p>
-                </div>
-                <span className="text-xs font-sora font-semibold px-2 py-1 rounded-lg flex-shrink-0"
-                      style={{ background: 'rgba(11,148,136,0.12)', color: '#14b8a6' }}>
-                  {(language || 'en').toUpperCase()}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Recent Sessions — single button linking to full sessions page */}
+      <Link
+        href="/sessions"
+        className="flex items-center gap-4 rounded-3xl p-4 transition-all active:scale-[0.98]"
+        style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
+      >
+        <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+             style={{ background: 'rgba(11,148,136,0.1)' }}>
+          <Clock size={20} style={{ color: '#14b8a6' }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-sora font-semibold text-sm" style={{ color: 'var(--text)' }}>Recent Sessions</p>
+          <p className="font-dm text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+            {loading ? 'Loading…' : stats.sessions === 0 ? 'No sessions yet' : `${stats.sessions} transcription${stats.sessions !== 1 ? 's' : ''}`}
+          </p>
+        </div>
+        <ChevronRight size={16} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+      </Link>
 
     </div>
   )

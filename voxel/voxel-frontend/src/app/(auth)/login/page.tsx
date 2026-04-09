@@ -7,9 +7,11 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
+// Singleton — defined outside component to avoid creating a new instance on every render
+const supabase = createClient()
+
 export default function LoginPage() {
   const router    = useRouter()
-  const supabase  = createClient()
   const [showPass, setShowPass] = useState(false)
   const [loading,  setLoading]  = useState(false)
   const [form, setForm] = useState({ email: '', password: '' })

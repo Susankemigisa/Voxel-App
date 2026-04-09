@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Settings, Trash2, User } from 'lucide-react'
+import { Settings, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { useAppStore } from '@/lib/store/authStore'
 import toast from 'react-hot-toast'
+
+// Singleton — defined outside component to avoid creating a new instance on every render
+const supabase = createClient()
 
 interface Contact {
   id:       string
@@ -16,7 +19,6 @@ interface Contact {
 const RELATIONS = ['Doctor', 'Family', 'Friend', 'Caregiver', 'Colleague', 'Other']
 
 export default function SafetyPage() {
-  const supabase = createClient()
   const user     = useAppStore(s => s.user)
 
   const [contacts, setContacts] = useState<Contact[]>([])
@@ -24,7 +26,6 @@ export default function SafetyPage() {
   const [adding,   setAdding]   = useState(false)
   const [saving,   setSaving]   = useState(false)
 
-  // New contact form state
   const [name,     setName]     = useState('')
   const [phone,    setPhone]    = useState('')
   const [relation, setRelation] = useState('Family')
@@ -159,7 +160,6 @@ export default function SafetyPage() {
               </div>
             ))}
 
-            {/* Inline add form */}
             {adding && (
               <div className="px-4 py-4 space-y-3">
                 <input
@@ -172,7 +172,7 @@ export default function SafetyPage() {
                 <input
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
-                  placeholder="Settings number e.g. +256 700 000 000"
+                  placeholder="Phone number e.g. +256 700 000 000"
                   type="tel"
                   className="w-full rounded-xl px-3 py-2.5 text-sm font-dm"
                   style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', outline: 'none' }}

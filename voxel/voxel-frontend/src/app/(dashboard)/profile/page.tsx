@@ -10,6 +10,9 @@ import { useTheme } from '@/components/shared/ThemeProvider'
 import toast from 'react-hot-toast'
 import { PageHeader } from '@/components/layout/PageHeader'
 
+// Singleton — defined outside component to avoid creating a new instance on every render
+const supabase = createClient()
+
 function Toggle({ defaultOn = false }: { defaultOn?: boolean }) {
   const [on, setOn] = useState(defaultOn)
   return (
@@ -24,7 +27,6 @@ function Toggle({ defaultOn = false }: { defaultOn?: boolean }) {
 
 export default function ProfilePage() {
   const router          = useRouter()
-  const supabase        = createClient()
   const { theme, toggle } = useTheme()
   const user            = useAppStore(s => s.user)
   const updateUser      = useAppStore(s => s.updateUser)
@@ -50,7 +52,6 @@ export default function ProfilePage() {
 
       if (error) throw error
 
-      // Update global store immediately — persists across all pages
       updateUser({ displayName: nameInput.trim() })
       toast.success('Name updated!')
       setEditingName(false)
@@ -95,7 +96,6 @@ export default function ProfilePage() {
             {user.initials || <User size={28} />}
           </div>
 
-          {/* Editable display name */}
           {editingName ? (
             <div className="flex items-center gap-2 mb-1">
               <input
@@ -182,9 +182,9 @@ export default function ProfilePage() {
         <p className="text-xs font-sora font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--subtle)' }}>Account</p>
         <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
           {[
-            { icon: Globe,  label: 'Language Preferences', href: '/settings/language'      },
-            { icon: Settings,       label: 'Notifications',         href: '/settings/notifications' },
-            { icon: Settings,     label: 'Privacy & Security',    href: '/settings/privacy'       },
+            { icon: Globe,    label: 'Language Preferences', href: '/settings/language'      },
+            { icon: Settings, label: 'Notifications',         href: '/settings/notifications' },
+            { icon: Settings, label: 'Privacy & Security',    href: '/settings/privacy'       },
             { icon: Settings, label: 'Help & Support',        href: '/settings/help'          },
           ].map(({ icon: Icon, label, href }, i, arr) => (
             <Link key={label} href={href}

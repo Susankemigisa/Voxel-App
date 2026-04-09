@@ -7,12 +7,13 @@ import { useAuthStore } from '@/lib/store/authStore'
 import { signIn, signUp, signOut, getProfile } from '@/lib/api/supabase'
 import toast from 'react-hot-toast'
 
+// Singleton — defined outside hook to avoid creating a new instance on every render
+const supabase = createClient()
+
 export function useAuth() {
   const router  = useRouter()
   const store   = useAuthStore()
-  const supabase = createClient()
 
-  // Sync Supabase session on mount
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {

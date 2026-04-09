@@ -2,8 +2,10 @@ import { createClient } from '@/lib/supabase'
 import { useAuthStore } from '@/lib/store/authStore'
 import type { AppUser } from '@/types'
 
+// Singleton — defined once at module level, shared by all functions in this file
+const supabase = createClient()
+
 export async function signUp(email: string, password: string, fullName: string) {
-  const supabase = createClient()
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -14,11 +16,9 @@ export async function signUp(email: string, password: string, fullName: string) 
 }
 
 export async function signIn(email: string, password: string) {
-  const supabase = createClient()
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
 
-  // Persist to Zustand
   const store = useAuthStore.getState()
   store.setToken(data.session?.access_token ?? null)
   store.setUser({
@@ -32,13 +32,11 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function signOut() {
-  const supabase = createClient()
   await supabase.auth.signOut()
   useAuthStore.getState().logout()
 }
 
 export async function getProfile(userId: string): Promise<AppUser | null> {
-  const supabase = createClient()
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
@@ -56,7 +54,6 @@ export async function getProfile(userId: string): Promise<AppUser | null> {
 }
 
 export async function updateProfile(userId: string, updates: { full_name?: string; avatar_url?: string }) {
-  const supabase = createClient()
   const { error } = await supabase
     .from('profiles')
     .update({ ...updates, updated_at: new Date().toISOString() })
@@ -65,7 +62,6 @@ export async function updateProfile(userId: string, updates: { full_name?: strin
 }
 
 export async function getUserPreferences(userId: string) {
-  const supabase = createClient()
   const { data } = await supabase
     .from('user_preferences')
     .select('*')
@@ -75,7 +71,6 @@ export async function getUserPreferences(userId: string) {
 }
 
 export async function updateUserPreferences(userId: string, prefs: Record<string, unknown>) {
-  const supabase = createClient()
   const { error } = await supabase
     .from('user_preferences')
     .upsert({ user_id: userId, ...prefs })
@@ -83,7 +78,6 @@ export async function updateUserPreferences(userId: string, prefs: Record<string
 }
 
 export async function getSavedPhrases(userId: string) {
-  const supabase = createClient()
   const { data } = await supabase
     .from('saved_phrases')
     .select('*')
@@ -93,7 +87,6 @@ export async function getSavedPhrases(userId: string) {
 }
 
 export async function savePhrase(userId: string, phrase: string, language: string, category?: string) {
-  const supabase = createClient()
   const { error } = await supabase
     .from('saved_phrases')
     .insert({ user_id: userId, phrase, language, category })
@@ -101,7 +94,6 @@ export async function savePhrase(userId: string, phrase: string, language: strin
 }
 
 export async function deletePhrase(phraseId: string) {
-  const supabase = createClient()
   const { error } = await supabase
     .from('saved_phrases')
     .delete()

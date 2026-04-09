@@ -15,9 +15,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const { setUser, setToken, logout } = useAppStore()
 
   useEffect(() => {
+    // Use the singleton — createClient() returns the same instance every time
     const supabase = createClient()
 
-    // Hydrate store from the current session on first render
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) return
       const u = session.user
@@ -36,7 +36,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       })
     })
 
-    // Keep store in sync on auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (!session) {
