@@ -3,7 +3,7 @@
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Language(str, Enum):
@@ -52,6 +52,8 @@ class TranslationRequest(BaseModel):
 
 
 class TranslationResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     source_text: str
     translated: str
     source_lang: Language
@@ -75,6 +77,8 @@ class NavigationIntent(BaseModel):
 
 
 class PipelineResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     raw_transcript: str
     clean_text: str
     language: str
@@ -88,6 +92,8 @@ class PipelineResponse(BaseModel):
 
 
 class ASRResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     transcript: str
     clean_text: str
     language: str

@@ -124,7 +124,7 @@ class Settings(BaseSettings):
     navigation_intent_strategy: str = "local"
     navigation_modal_url: str = ""
     navigation_modal_token: str = ""
-    navigation_modal_timeout_s: float = 20.0
+    navigation_modal_timeout_s: float = 45.0
 
     # ── Generated audio storage ─────────────────────────────────────────────
     tts_audio_bucket: str = "tts-audio"
