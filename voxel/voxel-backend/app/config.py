@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     #   local     -> local model only (skip remote inference)
     asr_en_strategy: str = "local"
 
+    # ASR runtime strategy (Luganda):
+    #   auto  -> try Modal, then local fallback
+    #   modal -> Modal endpoint only
+    #   local -> local model only
+    asr_lg_strategy: str = "auto"
+
     # Modal ASR endpoint settings (used when strategy=modal or strategy=auto)
     # Example URL:
     # https://xxxxx--whisper-endpoint-transcriber-transcribe.modal.run

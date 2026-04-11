@@ -28,6 +28,7 @@ LG_TRIGGERS = [
     "ntwala e", "ntwale e", "ntwala ku", "ntwale ku", "genda e", "genda ku",
     "nsomeze", "genda", "njigiriza", "nsobola otya okugenda", "nsobola ngenda",
     "nfuna ekkubo okutuuka", "ngenda", "nkolere ekkubo",
+    "kundagirira", "kundagirila", "ndagirira", "ndagira e", "ndagira ku",
 ]
 
 UGANDA_PLACES = [
@@ -44,8 +45,16 @@ UGANDA_PLACES = [
     "palace of the republic", "parliament", "makerere university",
     "mulago hospital", "kampala hospital", "aga khan", "case hospital",
     "entebbe airport", "entebbe international airport",
-    "kyebando",
+    "kyebando", "mpigi", "kalangala",
 ]
+
+ASR_PLACE_ALIASES = {
+    "mpijgi": "mpigi",
+    "mpiggi": "mpigi",
+    "mpiji": "mpigi",
+    "kalangalaa": "kalangala",
+    "kolangala": "kalangala",
+}
 
 
 @dataclass
@@ -126,6 +135,8 @@ class NavigationIntentService:
 
     def _extract_local(self, text: str) -> NavigationIntentResult:
         norm = self._normalise(text)
+        for wrong, correct in ASR_PLACE_ALIASES.items():
+            norm = norm.replace(wrong, correct)
 
         for trigger in EN_TRIGGERS:
             if trigger in norm:
@@ -172,6 +183,10 @@ class NavigationIntentService:
         text = self._normalise(destination)
         context = self._normalise(context_text)
 
+        for wrong, correct in ASR_PLACE_ALIASES.items():
+            text = text.replace(wrong, correct)
+            context = context.replace(wrong, correct)
+
         # Prefer known place mentions from destination first, then full context.
         for source in (text, context):
             for place in UGANDA_PLACES:
@@ -180,7 +195,8 @@ class NavigationIntentService:
 
         # Strip conversational wrappers commonly seen in Luganda requests.
         wrappers = [
-            "sayidizeyo", "sayidiizeyo", "nyamba", "njagala kugenda",
+            "sayidizeyo", "sayidiizeyo", "sayirizeyo", "sayirize eyo", "sayiriz eyo",
+            "nyamba", "njagala kugenda",
             "gye bayita", "ebayita", "bayita", "gyebayita",
         ]
         cleaned = text

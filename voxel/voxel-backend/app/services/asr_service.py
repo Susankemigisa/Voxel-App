@@ -45,13 +45,16 @@ class ASRService:
         }
 
     def _strategy_for(self, language: Language) -> str:
-        # Current strategy is configurable for English; Luganda remains local.
-        if language != Language.EN:
-            return "local"
+        if language == Language.EN:
+            strategy = (settings.asr_en_strategy or "auto").strip().lower()
+            if strategy not in {"auto", "modal", "inference", "local"}:
+                logger.warning("Invalid ASR_EN_STRATEGY=%r, defaulting to 'auto'", strategy)
+                return "auto"
+            return strategy
 
-        strategy = (settings.asr_en_strategy or "auto").strip().lower()
-        if strategy not in {"auto", "modal", "inference", "local"}:
-            logger.warning("Invalid ASR_EN_STRATEGY=%r, defaulting to 'auto'", strategy)
+        strategy = (settings.asr_lg_strategy or "auto").strip().lower()
+        if strategy not in {"auto", "modal", "local"}:
+            logger.warning("Invalid ASR_LG_STRATEGY=%r, defaulting to 'auto'", strategy)
             return "auto"
         return strategy
 

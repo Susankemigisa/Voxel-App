@@ -12,6 +12,7 @@ Orchestrates all 5 pipeline stages:
 Input:  raw audio bytes (any format, any quality)
 Output: clean text + (optionally) synthesised audio
 """
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -232,6 +233,13 @@ class VoicePipelineService:
                     f"confidence={nav_result.confidence:.2f}"
                 ),
             ))
+            logger.info(
+                "Stage 6 done: is_navigation=%s destination=%r confidence=%.2f reason=%s",
+                nav_result.is_navigation,
+                nav_result.destination,
+                nav_result.confidence,
+                nav_result.reason,
+            )
         except Exception as e:
             logger.warning("Navigation intent extraction failed: %s", e)
             stages.append(PipelineStageResult(

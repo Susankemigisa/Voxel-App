@@ -25,7 +25,14 @@ const KAMPALA: [number, number] = [0.3476, 32.5825]
 const UGANDA_PLACES = [
   'kyebando', 'ntinda', 'kawempe', 'nakawa', 'kampala', 'entebbe', 'jinja',
   'makerere', 'mulago', 'wandegeya', 'kololo', 'bukoto', 'kira', 'namugongo',
+  'mpigi',
 ]
+
+const ASR_PLACE_ALIASES: Record<string, string> = {
+  mpijgi: 'mpigi',
+  mpiggi: 'mpigi',
+  mpiji: 'mpigi',
+}
 
 // ── Realistic Uganda time estimation ─────────────────────────────────────────
 // OSRM gives wildly wrong times for Uganda (assumes European road speeds).
@@ -102,7 +109,7 @@ async function geocode(query: string) {
 }
 
 function buildGeocodeCandidates(raw: string): string[] {
-  const norm = raw.toLowerCase().replace(/[.,!?"']/g, ' ').replace(/\s+/g, ' ').trim()
+  let norm = raw.toLowerCase().replace(/[.,!?"']/g, ' ').replace(/\s+/g, ' ').trim()
   const out: string[] = []
 
   const add = (v: string) => {
@@ -112,7 +119,15 @@ function buildGeocodeCandidates(raw: string): string[] {
 
   add(raw)
 
-  const wrappers = ['sayidizeyo', 'sayidiizeyo', 'gye bayita', 'gyebayita', 'ebayita', 'bayita']
+  Object.entries(ASR_PLACE_ALIASES).forEach(([wrong, correct]) => {
+    norm = norm.replace(new RegExp(`\\b${wrong}\\b`, 'g'), correct)
+  })
+  add(norm)
+
+  const wrappers = [
+    'sayidizeyo', 'sayidiizeyo', 'sayirizeyo', 'sayirize eyo', 'sayiriz eyo',
+    'gye bayita', 'gyebayita', 'ebayita', 'bayita',
+  ]
   let stripped = norm
   wrappers.forEach(w => { stripped = stripped.replace(new RegExp(`\\b${w}\\b`, 'g'), ' ') })
   stripped = stripped.replace(/\s+/g, ' ').trim()

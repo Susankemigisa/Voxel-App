@@ -28,7 +28,7 @@ const UGANDA_PLACES = [
   'palace of the republic', 'parliament', 'makerere university',
   'mulago hospital', 'kampala hospital', 'aga khan', 'case hospital',
   'entebbe airport', 'entebbe international airport',
-  'kyebando',
+  'kyebando', 'mpigi',
 ]
 
 export interface NavigationIntent {
