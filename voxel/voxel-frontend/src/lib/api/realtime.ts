@@ -1,8 +1,7 @@
-import { createClient } from '@/lib/supabase'
+﻿import { createClient } from '@/lib/supabase'
 
 const supabase = createClient()
 
-/** Fetch real user stats from Supabase */
 export async function fetchUserStats(userId: string) {
   const { data, error } = await supabase
     .from('transcription_history')
@@ -21,7 +20,6 @@ export async function fetchUserStats(userId: string) {
   return { sessions, accuracy, languages }
 }
 
-/** Fetch recent transcription history */
 export async function fetchRecentSessions(userId: string, limit = 3) {
   const { data, error } = await supabase
     .from('transcription_history')
@@ -34,7 +32,6 @@ export async function fetchRecentSessions(userId: string, limit = 3) {
   return data
 }
 
-/** Fetch user profile including display_name */
 export async function fetchProfile(userId: string) {
   const { data } = await supabase
     .from('profiles')
@@ -44,7 +41,6 @@ export async function fetchProfile(userId: string) {
   return data
 }
 
-/** Update display_name in profiles */
 export async function updateDisplayName(userId: string, displayName: string) {
   const { error } = await supabase
     .from('profiles')
@@ -53,7 +49,6 @@ export async function updateDisplayName(userId: string, displayName: string) {
   return !error
 }
 
-/** Format relative time */
 export function formatRelative(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const s    = Math.floor(diff / 1000)

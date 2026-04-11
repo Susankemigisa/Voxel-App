@@ -60,7 +60,9 @@ export default function SafetyPage() {
       .single()
 
     if (error) {
-      toast.error('Could not save contact')
+      // Show the real Supabase error — often an RLS policy violation
+      toast.error(error.message || 'Could not save contact')
+      console.error('Emergency contact insert error:', error)
     } else {
       setContacts(p => [...p, data])
       setName(''); setPhone(''); setRelation('Family')
