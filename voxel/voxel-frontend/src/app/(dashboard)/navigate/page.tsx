@@ -22,6 +22,10 @@ interface RouteResult {
 const ROUTE_COLORS = ['#14b8a6', '#3b82f6', '#a855f7']
 const ROUTE_LABELS = ['Fastest Route', 'Alternative Route', 'Scenic Route']
 const KAMPALA: [number, number] = [0.3476, 32.5825]
+const UGANDA_PLACES = [
+  'kyebando', 'ntinda', 'kawempe', 'nakawa', 'kampala', 'entebbe', 'jinja',
+  'makerere', 'mulago', 'wandegeya', 'kololo', 'bukoto', 'kira', 'namugongo',
+]
 
 // ── Realistic Uganda time estimation ─────────────────────────────────────────
 // OSRM gives wildly wrong times for Uganda (assumes European road speeds).
@@ -78,16 +82,53 @@ function fmtDist(m: number): string {
 }
 
 async function geocode(query: string) {
+  const candidates = buildGeocodeCandidates(query)
   try {
-    const q = /uganda/i.test(query) ? query : `${query}, Uganda`
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=ug`,
-      { headers: { 'Accept-Language': 'en', 'User-Agent': 'VoxelASR/1.0' } }
-    )
-    const data = await res.json()
-    if (!data[0]) return null
-    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) }
-  } catch { return null }
+    for (const c of candidates) {
+      const q = /uganda/i.test(c) ? c : `${c}, Uganda`
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=ug`,
+        { headers: { 'Accept-Language': 'en', 'User-Agent': 'VoxelASR/1.0' } }
+      )
+      const data = await res.json()
+      if (data[0]) {
+        return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) }
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function buildGeocodeCandidates(raw: string): string[] {
+  const norm = raw.toLowerCase().replace(/[.,!?"']/g, ' ').replace(/\s+/g, ' ').trim()
+  const out: string[] = []
+
+  const add = (v: string) => {
+    const t = v.trim()
+    if (t && !out.includes(t)) out.push(t)
+  }
+
+  add(raw)
+
+  const wrappers = ['sayidizeyo', 'sayidiizeyo', 'gye bayita', 'gyebayita', 'ebayita', 'bayita']
+  let stripped = norm
+  wrappers.forEach(w => { stripped = stripped.replace(new RegExp(`\\b${w}\\b`, 'g'), ' ') })
+  stripped = stripped.replace(/\s+/g, ' ').trim()
+  add(stripped)
+
+  UGANDA_PLACES.forEach(place => {
+    if (norm.includes(place)) add(place)
+  })
+
+  if (stripped.split(' ').length > 1) {
+    const lastTwo = stripped.split(' ').slice(-2).join(' ')
+    add(lastTwo)
+    add(stripped.split(' ').slice(-1).join(' '))
+  }
+
+  return out
 }
 
 async function fetchRoutes(

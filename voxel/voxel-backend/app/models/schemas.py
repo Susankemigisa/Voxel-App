@@ -65,6 +65,15 @@ class PipelineRequest(BaseModel):
     translate_to: Optional[Language] = None
 
 
+class NavigationIntent(BaseModel):
+    is_navigation: bool
+    destination: str = ""
+    query: str = ""
+    confidence: float = 0.0
+    corrected_text: str = ""
+    reason: str = ""
+
+
 class PipelineResponse(BaseModel):
     raw_transcript: str
     clean_text: str
@@ -72,8 +81,10 @@ class PipelineResponse(BaseModel):
     confidence: float
     model_used: ModelName
     audio_base64: Optional[str] = None
+    audio_url: Optional[str] = None
     duration_ms: Optional[int] = None
     pipeline_ms: int
+    navigation_intent: Optional[NavigationIntent] = None
 
 
 class ASRResponse(BaseModel):

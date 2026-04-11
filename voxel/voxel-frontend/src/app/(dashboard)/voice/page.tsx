@@ -340,11 +340,16 @@ export default function VoicePage() {
     const result = data.value
     setApiError(null)
 
-    if (result.audio_base64 && mode !== 'visual') {
+    // Set up audio playback if backend returned inline audio or a persisted URL
+    if (mode !== 'visual' && (result.audio_base64 || result.audio_url)) {
       try {
-        const bytes = atob(result.audio_base64)
-        const arr   = new Uint8Array(bytes.length).map((_, i) => bytes.charCodeAt(i))
-        const audio = new Audio(URL.createObjectURL(new Blob([arr], { type: 'audio/wav' })))
+        const audio = result.audio_base64
+          ? (() => {
+              const bytes = atob(result.audio_base64!)
+              const arr = new Uint8Array(bytes.length).map((_, i) => bytes.charCodeAt(i))
+              return new Audio(URL.createObjectURL(new Blob([arr], { type: 'audio/wav' })))
+            })()
+          : new Audio(result.audio_url!)
         audio.onended = () => setIsPlaying(false)
         audio.onpause = () => setIsPlaying(false)
         audioRef.current = audio
@@ -377,9 +382,17 @@ export default function VoicePage() {
     }
     // ────────────────────────────────────────────────────────────────────────
 
-    // Navigation intent detection
-    const textToCheck = result.clean_text || result.raw_transcript || ''
-    const intent = detectNavigationIntent(textToCheck)
+    // Navigation intent: prefer backend extraction, then local fallback
+    const backendIntent = result.navigation_intent
+    const localIntent = detectNavigationIntent(result.clean_text || result.raw_transcript || '')
+    const intent = (backendIntent?.is_navigation && backendIntent.confidence >= 0.6)
+      ? {
+          isNavigation: backendIntent.is_navigation,
+          destination: backendIntent.destination,
+          query: backendIntent.query,
+          confidence: backendIntent.confidence,
+        }
+      : localIntent
     if (intent.isNavigation && intent.confidence >= 0.65) {
       setTimeout(() => router.push(
         `/navigate?destination=${encodeURIComponent(intent.destination)}&query=${encodeURIComponent(intent.query)}`

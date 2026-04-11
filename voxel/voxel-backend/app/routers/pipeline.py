@@ -4,11 +4,14 @@ Pipeline Router — POST /api/v1/pipeline/process
 The main Voxel endpoint: impaired audio in → clean text + audio out.
 """
 import logging
+import base64
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.middleware.auth       import get_optional_user
+from app.config import get_settings
 from app.models.schemas        import (
     Language, OutputMode, VoiceGender,
     PipelineResponse,
@@ -17,6 +20,7 @@ from app.services.voice_pipeline import voice_pipeline
 from app.db.supabase             import get_supabase
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
 
@@ -86,6 +90,33 @@ async def process_pipeline(
     except RuntimeError as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
+    audio_url: Optional[str] = None
+
+    # Persist generated audio if user is authenticated and audio is available.
+    if user and result.audio_base64:
+        try:
+            user_id = user["sub"]
+            supabase = get_supabase()
+            wav_bytes = base64.b64decode(result.audio_base64)
+            object_path = f"{user_id}/{int(time.time() * 1000)}.wav"
+
+            supabase.storage.from_(settings.tts_audio_bucket).upload(
+                object_path,
+                wav_bytes,
+                {"content-type": "audio/wav", "upsert": "true"},
+            )
+
+            audio_url = supabase.storage.from_(settings.tts_audio_bucket).get_public_url(object_path)
+
+            if not audio_url:
+                signed = supabase.storage.from_(settings.tts_audio_bucket).create_signed_url(
+                    object_path,
+                    settings.tts_audio_signed_url_expires_s,
+                )
+                audio_url = (signed or {}).get("signedURL")
+        except Exception as e:
+            logger.warning("Could not persist generated audio: %s", e)
+
     # Persist to transcription history (fire-and-forget)
     if user and result.raw_transcript:
         try:
@@ -96,6 +127,7 @@ async def process_pipeline(
                 "transcript": result.clean_text,
                 "language":   result.language,
                 "confidence": result.confidence,
+                "audio_url":  audio_url,
                 "model_used": result.model_used.value,
             }).execute()
         except Exception as e:
@@ -108,8 +140,10 @@ async def process_pipeline(
         confidence     = result.confidence,
         model_used     = result.model_used,
         audio_base64   = result.audio_base64,
+        audio_url      = audio_url,
         duration_ms    = result.duration_ms,
         pipeline_ms    = result.pipeline_ms,
+        navigation_intent = result.navigation_intent,
     )
 
 from pydantic import BaseModel as _BaseModel

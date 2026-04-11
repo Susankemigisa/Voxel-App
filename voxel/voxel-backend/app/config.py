@@ -110,6 +110,20 @@ class Settings(BaseSettings):
 
     target_sample_rate:   int   = 16_000
 
+    # ── Navigation intent extraction ─────────────────────────────────────────
+    # Strategy values:
+    #   auto  -> try Modal endpoint first, then local fallback
+    #   modal -> Modal endpoint only
+    #   local -> local rule-based extraction only
+    navigation_intent_strategy: str = "local"
+    navigation_modal_url: str = ""
+    navigation_modal_token: str = ""
+    navigation_modal_timeout_s: float = 20.0
+
+    # ── Generated audio storage ─────────────────────────────────────────────
+    tts_audio_bucket: str = "tts-audio"
+    tts_audio_signed_url_expires_s: int = 3600
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

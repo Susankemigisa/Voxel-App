@@ -8,6 +8,7 @@ const EN_TRIGGERS = [
 ]
 
 const LG_TRIGGERS = [
+  'ntwala e', 'ntwale e', 'ntwala ku', 'ntwale ku', 'genda e', 'genda ku',
   'nsomeze', 'genda', 'njigiriza', 'nsobola otya okugenda', 'nsobola ngenda',
   'nfuna ekkubo okutuuka', 'ngenda', 'nkolere ekkubo',
 ]
@@ -27,6 +28,7 @@ const UGANDA_PLACES = [
   'palace of the republic', 'parliament', 'makerere university',
   'mulago hospital', 'kampala hospital', 'aga khan', 'case hospital',
   'entebbe airport', 'entebbe international airport',
+  'kyebando',
 ]
 
 export interface NavigationIntent {

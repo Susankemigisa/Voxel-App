@@ -22,6 +22,7 @@ from app.services.asr_service        import asr_service
 from app.services.text_reconstructor import text_reconstructor
 from app.services.translation_service import translation_service
 from app.services.tts_service        import tts_service
+from app.services.navigation_intent_service import navigation_intent_service
 from app.models.schemas import Language, VoiceGender, OutputMode, ModelName
 from app.config import get_settings
 
@@ -47,6 +48,7 @@ class PipelineResult:
     audio_base64:   Optional[str] = None
     duration_ms:    Optional[int] = None
     pipeline_ms:    int = 0
+    navigation_intent: Optional[dict] = None
     stages:         list[PipelineStageResult] = field(default_factory=list)
 
 
@@ -169,6 +171,7 @@ class VoicePipelineService:
         # ── Stage 5: Text-to-Speech (conditional) ────────────────────────────
         audio_b64:   Optional[str] = None
         duration_ms: Optional[int] = None
+        navigation_intent: Optional[dict] = None
 
         tts_lang = translate_to if (translate_to and translate_to != language) else language
 
@@ -197,6 +200,47 @@ class VoicePipelineService:
                 ))
                 # TTS failure is non-fatal — visual output still works
 
+        # ── Stage 6: Navigation intent extraction (non-fatal) ───────────────
+        t0 = time.monotonic()
+        try:
+            try:
+                nav_result = await asyncio.wait_for(
+                    navigation_intent_service.extract(
+                        transcript=clean_text,
+                        language=tts_lang.value,
+                    ),
+                    timeout=6.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Navigation extraction timed out; using local fallback")
+                nav_result = navigation_intent_service.extract_local(clean_text)
+
+            navigation_intent = {
+                "is_navigation": nav_result.is_navigation,
+                "destination": nav_result.destination,
+                "query": nav_result.query,
+                "confidence": nav_result.confidence,
+                "corrected_text": nav_result.corrected_text,
+                "reason": nav_result.reason,
+            }
+            stages.append(PipelineStageResult(
+                stage="navigation_intent",
+                success=True,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                detail=(
+                    f"is_navigation={nav_result.is_navigation}, "
+                    f"confidence={nav_result.confidence:.2f}"
+                ),
+            ))
+        except Exception as e:
+            logger.warning("Navigation intent extraction failed: %s", e)
+            stages.append(PipelineStageResult(
+                stage="navigation_intent",
+                success=False,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                detail=str(e),
+            ))
+
         pipeline_ms = int((time.monotonic() - pipeline_start) * 1000)
         logger.info("Pipeline complete in %dms", pipeline_ms)
 
@@ -209,6 +253,7 @@ class VoicePipelineService:
             audio_base64   = audio_b64,
             duration_ms    = duration_ms,
             pipeline_ms    = pipeline_ms,
+            navigation_intent = navigation_intent,
             stages         = stages,
         )
 

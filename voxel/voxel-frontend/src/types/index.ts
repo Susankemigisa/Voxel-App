@@ -29,9 +29,21 @@ export interface PipelineResponse {
   clean_text:     string
   language:       string
   confidence:     number
+  model_used?:    'whisper' | 'wav2vec2' | 'mms'
   audio_base64?:  string   // present if output_mode includes audio
+  audio_url?:     string
   duration_ms?:   number
   pipeline_ms:    number
+  navigation_intent?: NavigationIntent
+}
+
+export interface NavigationIntent {
+  is_navigation: boolean
+  destination: string
+  query: string
+  confidence: number
+  corrected_text: string
+  reason: string
 }
 
 // ─── App state types ──────────────────────────────────────────────────────────
