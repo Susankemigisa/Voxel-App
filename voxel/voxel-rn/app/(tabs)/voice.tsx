@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, Alert, Clipboard,
+  StyleSheet, ActivityIndicator, Alert,
 } from 'react-native'
+import Clipboard from '@react-native-clipboard/clipboard'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Audio } from 'expo-av'
 import { useRouter } from 'expo-router'

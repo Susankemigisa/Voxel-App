@@ -1,7 +1,7 @@
 // For local dev: use your machine's LAN IP, not localhost
 // (Android emulator/device can't reach localhost:8000)
 // Change this to your deployed URL when deploying
-export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:8000'
+export const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://10.34.0.239:8001'
 // Note: 10.0.2.2 is Android emulator's alias for host machine localhost
 // For a real device on same WiFi, use your machine's IP e.g. http://192.168.1.x:8000
 
