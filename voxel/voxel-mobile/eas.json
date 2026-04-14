@@ -9,7 +9,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://beijuka-cdli-hackathon-uganda--voxel-fastapi-backend-fas-e71809.modal.run"
+        "EXPO_PUBLIC_API_BASE_URL": "https://kemigisa32--voxel-fastapi-backend-fastapi-app.modal.run"
       }
     },
     "production": {
@@ -17,7 +17,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://beijuka-cdli-hackathon-uganda--voxel-fastapi-backend-fas-e71809.modal.run"
+        "EXPO_PUBLIC_API_BASE_URL": "https://kemigisa32--voxel-fastapi-backend-fastapi-app.modal.run"
       }
     }
   }
