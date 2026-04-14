@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase'
-import type { VoxelUser, initials as _initials } from '@/lib/store/authStore'
+import type { VoxelUser } from '@/lib/store/authStore'
 import type { AppPreferences } from '@/types'
 import type { Profile, UserPreferences } from '@/types/database'
 
@@ -76,50 +76,6 @@ export async function updateProfile(
       updated_at: new Date().toISOString(),
     })
     .eq('id', userId)
-  if (error) throw new Error(error.message)
-}
-
-// ── Preferences ───────────────────────────────────────────────────────────────
-
-export async function getPreferences(userId: string): Promise<AppPreferences | null> {
-  const supabase = getClient()
-  const { data, error } = await supabase
-    .from('user_preferences')
-    .select('*')
-    .eq('user_id', userId)
-    .single()
-
-  if (error || !data) return null
-
-  const p = data as UserPreferences
-  return {
-    primaryLanguage: p.primary_language,
-    voiceGender:     p.voice_gender,
-    pitch:           p.pitch,
-    readingRate:     p.reading_rate,
-    signLanguage:    p.sign_language,
-    speechAssist:    p.speech_assist,
-    ttsEnabled:      p.tts_enabled,
-    outputMode:      p.output_mode,
-  }
-}
-
-export async function upsertPreferences(
-  userId: string,
-  prefs: Partial<AppPreferences>,
-) {
-  const supabase = getClient()
-  const { error } = await supabase.from('user_preferences').upsert({
-    user_id:          userId,
-    primary_language: prefs.primaryLanguage,
-    voice_gender:     prefs.voiceGender,
-    pitch:            prefs.pitch,
-    reading_rate:     prefs.readingRate,
-    sign_language:    prefs.signLanguage,
-    speech_assist:    prefs.speechAssist,
-    tts_enabled:      prefs.ttsEnabled,
-    output_mode:      prefs.outputMode,
-  })
   if (error) throw new Error(error.message)
 }
 
