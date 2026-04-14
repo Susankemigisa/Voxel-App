@@ -60,7 +60,7 @@ export default function LanguageHubPage() {
                       onClick={() => setSelected(p =>
                         active && p.length > 1
                           ? p.filter(c => c !== lang.code)
-                          : [...new Set([...p, lang.code])]
+                          : Array.from(new Set([...p, lang.code]))
                       )}
                       className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all"
                       style={{
