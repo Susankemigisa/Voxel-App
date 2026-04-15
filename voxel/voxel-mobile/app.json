@@ -1,25 +1,25 @@
 {
   "expo": {
-    "name": "voxel-mobile",
+    "name": "Voxel",
     "slug": "voxel-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#080d1a"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false
     },
     "android": {
       "package": "com.cdli.voxelmobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0b9488"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
