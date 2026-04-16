@@ -4,6 +4,7 @@ import {
   ScrollView, StyleSheet, ActivityIndicator, Alert,
 } from 'react-native'
 import { Audio } from 'expo-av'
+import * as FileSystem from 'expo-file-system'
 import { Header } from '../components/Header'
 import { colors, font, spacing, radius } from '../theme'
 import { synthesizeTTS } from '../lib/api'
@@ -44,8 +45,13 @@ export function TTSScreen() {
         await soundRef.current.unloadAsync()
       }
       await Audio.setAudioModeAsync({ playsInSilentModeIOS: true })
+      // Save base64 to temp file then play
+      const audioPath = `${FileSystem.cacheDirectory}tts_output.wav`
+      await FileSystem.writeAsStringAsync(audioPath, result.audio_base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      })
       const { sound } = await Audio.Sound.createAsync(
-        { uri: `data:audio/wav;base64,${result.audio_base64}` },
+        { uri: audioPath },
         { shouldPlay: true }
       )
       soundRef.current = sound

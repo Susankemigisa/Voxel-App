@@ -3,27 +3,33 @@ import { View, StyleSheet, ActivityIndicator } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 
-import { supabase } from './src/supabase'
+import { supabase }          from './src/supabase'
 import { useAuthStore, makeInitials } from './src/store/authStore'
-import { colors } from './src/theme'
+import { ThemeProvider, useTheme }   from './src/ThemeContext'
+import { colors }            from './src/theme'
 
+import { LandingScreen }  from './src/screens/LandingScreen'
 import { LoginScreen }    from './src/screens/LoginScreen'
 import { RegisterScreen } from './src/screens/RegisterScreen'
 import { HomeScreen }     from './src/screens/HomeScreen'
 import { VoiceScreen }    from './src/screens/VoiceScreen'
 import { NavigateScreen } from './src/screens/NavigateScreen'
 import { TTSScreen }      from './src/screens/TTSScreen'
-import { ProfileScreen }  from './src/screens/ProfileScreen'
+import { SettingsScreen } from './src/screens/SettingsScreen'
 import { BottomNav }      from './src/components/BottomNav'
 import type { TabName }   from './src/components/BottomNav'
 
-export default function App() {
+type AuthFlow = 'landing' | 'login' | 'register'
+
+function AppInner() {
   const { user, isLoading, setUser, setToken, setLoading } = useAuthStore()
-  const [authScreen, setAuthScreen] = useState<'login' | 'register'>('login')
-  const [activeTab,  setActiveTab]  = useState<TabName>('home')
+  const { theme, toggle, isDark } = useTheme()
+  const [authFlow,  setAuthFlow]  = useState<AuthFlow>('landing')
+  const [activeTab, setActiveTab] = useState<TabName>('home')
+
+  const bg = isDark ? colors.bg : '#f0f4ff'
 
   useEffect(() => {
-    // Check existing session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
         setToken(session.access_token)
@@ -32,7 +38,6 @@ export default function App() {
       setLoading(false)
     })
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
         setToken(session.access_token)
@@ -43,6 +48,7 @@ export default function App() {
         setUser(null)
         setToken(null)
         setLoading(false)
+        setAuthFlow('landing')
       }
       if (event === 'TOKEN_REFRESHED' && session) {
         setToken(session.access_token)
@@ -74,15 +80,12 @@ export default function App() {
           joinedAt:    data.created_at,
         })
       }
-    } catch {
-      // Profile fetch failed — user still authed, just no profile data
-    }
+    } catch { /* profile fetch failed */ }
   }
 
-  // Loading splash
   if (isLoading) {
     return (
-      <View style={styles.splash}>
+      <View style={[styles.splash, { backgroundColor: bg }]}>
         <View style={styles.splashLogo}>
           <ActivityIndicator color="#fff" size="large" />
         </View>
@@ -90,59 +93,64 @@ export default function App() {
     )
   }
 
-  // Not authenticated
   if (!user) {
     return (
-      <SafeAreaProvider>
+      <View style={[styles.app, { backgroundColor: bg }]}>
         <StatusBar style="light" />
-        {authScreen === 'login'
-          ? <LoginScreen    onSwitch={() => setAuthScreen('register')} />
-          : <RegisterScreen onSwitch={() => setAuthScreen('login')}    />
-        }
-      </SafeAreaProvider>
+        {authFlow === 'landing' && (
+          <LandingScreen
+            onGetStarted={() => setAuthFlow('register')}
+            onSignIn={()     => setAuthFlow('login')}
+          />
+        )}
+        {authFlow === 'login' && (
+          <LoginScreen
+            onSwitch={() => setAuthFlow('register')}
+            onBack={()   => setAuthFlow('landing')}
+          />
+        )}
+        {authFlow === 'register' && (
+          <RegisterScreen
+            onSwitch={() => setAuthFlow('login')}
+            onBack={()   => setAuthFlow('landing')}
+          />
+        )}
+      </View>
     )
   }
 
-  // Authenticated — main app
   const renderScreen = () => {
     switch (activeTab) {
       case 'home':     return <HomeScreen     onNavigate={setActiveTab} />
       case 'voice':    return <VoiceScreen    />
       case 'navigate': return <NavigateScreen />
       case 'tts':      return <TTSScreen      />
-      case 'profile':  return <ProfileScreen  />
+      case 'settings': return <SettingsScreen theme={theme} onToggleTheme={toggle} isDark={isDark} />
       default:         return <HomeScreen     onNavigate={setActiveTab} />
     }
   }
 
   return (
+    <View style={[styles.app, { backgroundColor: bg }]}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      {renderScreen()}
+      <BottomNav active={activeTab} onPress={setActiveTab} isDark={isDark} />
+    </View>
+  )
+}
+
+export default function App() {
+  return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
-      <View style={styles.app}>
-        {renderScreen()}
-        <BottomNav active={activeTab} onPress={setActiveTab} />
-      </View>
+      <ThemeProvider>
+        <AppInner />
+      </ThemeProvider>
     </SafeAreaProvider>
   )
 }
 
 const styles = StyleSheet.create({
-  splash: {
-    flex:            1,
-    backgroundColor: colors.bg,
-    alignItems:      'center',
-    justifyContent:  'center',
-  },
-  splashLogo: {
-    width:          80,
-    height:         80,
-    borderRadius:   20,
-    backgroundColor: colors.teal,
-    alignItems:     'center',
-    justifyContent: 'center',
-  },
-  app: {
-    flex:            1,
-    backgroundColor: colors.bg,
-  },
+  splash: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  splashLogo: { width: 80, height: 80, borderRadius: 20, backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center' },
+  app: { flex: 1 },
 })

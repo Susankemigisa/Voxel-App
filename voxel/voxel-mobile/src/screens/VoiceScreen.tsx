@@ -88,10 +88,8 @@ export function VoiceScreen() {
 
       setStep('asr', 'active')
 
-      // Read file and create blob
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 })
+      // Pass URI directly as blob-like object for React Native FormData
       const blob = { uri, name: 'recording.m4a', type: 'audio/m4a' } as unknown as Blob
-
       const data = await runPipeline(blob, { language })
       setStep('asr', 'done')
 
@@ -101,12 +99,21 @@ export function VoiceScreen() {
 
       if (data.audio_base64) {
         setStep('tts', 'active')
-        // Play audio
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: `data:audio/wav;base64,${data.audio_base64}` },
-          { shouldPlay: true }
-        )
-        soundRef.current = sound
+        try {
+          // Save base64 audio to a temp file then play it
+          const audioPath = `${FileSystem.cacheDirectory}tts_output.wav`
+          await FileSystem.writeAsStringAsync(audioPath, data.audio_base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          })
+          await Audio.setAudioModeAsync({ playsInSilentModeIOS: true })
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: audioPath },
+            { shouldPlay: true }
+          )
+          soundRef.current = sound
+        } catch (audioErr) {
+          console.warn('Audio playback failed:', audioErr)
+        }
         setStep('tts', 'done')
       } else {
         setStep('tts', 'done')
