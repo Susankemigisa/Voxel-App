@@ -9,7 +9,7 @@ const BASE = `${BACKEND_BASE_URL}${API_PREFIX}`;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type Language   = "en" | "lg";
+export type Language    = "en" | "lg";
 export type VoiceGender = "male" | "female" | "robot";
 
 export interface PipelineResponse {
@@ -36,29 +36,89 @@ export interface NavigationExtractResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function post<T>(path: string, body: object): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${path} failed (${res.status}): ${text}`);
+/**
+ * POST JSON with automatic Modal cold-start retry.
+ * Modal apps go to sleep and return 404 "app stopped" on first hit.
+ * We retry once after 3s to give it time to wake up.
+ */
+async function post<T>(path: string, body: object, retries = 1): Promise<T> {
+  const url = `${BASE}${path}`;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      // Wait 3s before retry to let Modal wake the app up
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    try {
+      const res = await fetch(url, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(body),
+      });
+      if (res.status === 404) {
+        const text = await res.text().catch(() => res.statusText);
+        // Modal "app stopped" error — worth retrying
+        if (text.includes("app for invoked web endpoint is stopped") || text.includes("modal-http")) {
+          lastError = new Error(`Modal endpoint is starting up, please wait… (${res.status}: ${text})`);
+          continue; // retry
+        }
+        throw new Error(`API ${path} failed (${res.status}): ${text}`);
+      }
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`API ${path} failed (${res.status}): ${text}`);
+      }
+      return res.json() as Promise<T>;
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("Modal endpoint is starting up")) {
+        lastError = e;
+        continue;
+      }
+      throw e;
+    }
   }
-  return res.json() as Promise<T>;
+  throw lastError ?? new Error(`API ${path} failed after retries`);
 }
 
-async function postForm<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    body:   form,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${path} failed (${res.status}): ${text}`);
+/**
+ * POST FormData with automatic Modal cold-start retry.
+ */
+async function postForm<T>(path: string, form: FormData, retries = 1): Promise<T> {
+  const url = `${BASE}${path}`;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        body:   form,
+      });
+      if (res.status === 404) {
+        const text = await res.text().catch(() => res.statusText);
+        if (text.includes("app for invoked web endpoint is stopped") || text.includes("modal-http")) {
+          lastError = new Error(`Modal endpoint is starting up, please wait… (${res.status}: ${text})`);
+          continue;
+        }
+        throw new Error(`API ${path} failed (${res.status}): ${text}`);
+      }
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`API ${path} failed (${res.status}): ${text}`);
+      }
+      return res.json() as Promise<T>;
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("Modal endpoint is starting up")) {
+        lastError = e;
+        continue;
+      }
+      throw e;
+    }
   }
-  return res.json() as Promise<T>;
+  throw lastError ?? new Error(`API ${path} failed after retries`);
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
@@ -71,16 +131,13 @@ export async function healthCheck(): Promise<{ status: string }> {
 
 // ── Pipeline (ASR → clean → TTS) ─────────────────────────────────────────────
 
-/**
- * Returns the full pipeline endpoint URL — useful for streaming or
- * passing to a WebView / native audio recorder directly.
- */
 export function pipelineEndpointUrl(): string {
   return `${BASE}/pipeline/process`;
 }
 
 /**
  * Run the full voice pipeline: send audio blob → get transcript + audio.
+ * output_mode defaults to "both" so TTS audio is always returned.
  */
 export async function runPipeline(
   audioBlob: Blob,
@@ -93,10 +150,8 @@ export async function runPipeline(
   } = {}
 ): Promise<PipelineResponse> {
   const form = new FormData();
-  // React Native FormData accepts { uri, name, type }
   const file = audioBlob as unknown as { uri?: string };
   if (file.uri) {
-    // Native path (expo-av recording)
     (form as FormData).append("audio", {
       uri:  file.uri,
       name: "recording.m4a",
@@ -108,8 +163,8 @@ export async function runPipeline(
   form.append("language",    options.language   ?? "en");
   form.append("output_mode", options.outputMode ?? "both");
   if (options.voice) form.append("voice", options.voice);
-  if (options.pitch != null) form.append("pitch", String(options.pitch));
-  if (options.rate  != null) form.append("rate",  String(options.rate));
+  if (options.pitch != null) form.append("pitch", String(options.pitch / 100));
+  if (options.rate  != null) form.append("rate",  String(options.rate  / 50));
 
   return postForm<PipelineResponse>("/pipeline/process", form);
 }
