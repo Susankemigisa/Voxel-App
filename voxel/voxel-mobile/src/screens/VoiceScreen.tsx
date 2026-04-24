@@ -82,6 +82,7 @@ export function VoiceScreen() {
       setState('recording')
       setResult(null)
       setError(null)
+      setAudioPath(null)
       resetSteps()
     } catch (e) {
       Alert.alert('Error', 'Could not start recording')
@@ -103,11 +104,10 @@ export function VoiceScreen() {
 
       setStep('asr', 'active')
 
-      // Pass URI as blob-like object for React Native FormData
       const blob = { uri, name: 'recording.m4a', type: 'audio/m4a' } as unknown as Blob
       const data = await runPipeline(blob, {
         language,
-        outputMode: 'both',  // always request TTS audio back
+        outputMode: 'both',
       })
       setStep('asr', 'done')
 
@@ -115,7 +115,7 @@ export function VoiceScreen() {
       await new Promise(r => setTimeout(r, 300))
       setStep('text', 'done')
 
-      // Play TTS audio if present (works for both English AND Luganda)
+      // Play TTS audio if present
       if (data.audio_base64) {
         setStep('tts', 'active')
         try {
@@ -125,18 +125,19 @@ export function VoiceScreen() {
             try { await soundRef.current.unloadAsync() } catch {}
             soundRef.current = null
           }
-          // CRITICAL: switch audio session from recording → playback
+          // Switch audio session from recording → playback
           await Audio.setAudioModeAsync({
-            allowsRecordingIOS:    false,
-            playsInSilentModeIOS:  true,
-            staysActiveInBackground: false,
-            shouldDuckAndroid:     false,
+            allowsRecordingIOS:         false,
+            playsInSilentModeIOS:       true,
+            staysActiveInBackground:    false,
+            shouldDuckAndroid:          false,
             playThroughEarpieceAndroid: false,
           })
           const newAudioPath = `${FileSystem.cacheDirectory}voxel_tts_${Date.now()}.wav`
           await FileSystem.writeAsStringAsync(newAudioPath, data.audio_base64, {
-            encoding: 'base64',
+            encoding: FileSystem.EncodingType.Base64,
           })
+
           setAudioPath(newAudioPath)
           setPlaying(true)
           const { sound } = await Audio.Sound.createAsync(
@@ -153,6 +154,7 @@ export function VoiceScreen() {
           })
         } catch (audioErr) {
           console.warn('Audio playback failed:', audioErr)
+          Alert.alert('Audio Error', 'Could not play back TTS audio. Please try again.')
         }
         setStep('tts', 'done')
       } else {
@@ -173,7 +175,6 @@ export function VoiceScreen() {
     }
   }
 
-  // Cancel recording — stop and discard, go back to idle
   const cancelRecording = async () => {
     if (recordingRef.current) {
       try {
@@ -181,13 +182,13 @@ export function VoiceScreen() {
       } catch {}
       recordingRef.current = null
     }
-    // Reset audio mode
     try {
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true })
     } catch {}
     setState('idle')
     setResult(null)
     setError(null)
+    setAudioPath(null)
     resetSteps()
   }
 
@@ -196,11 +197,16 @@ export function VoiceScreen() {
     setState('idle')
     setResult(null)
     setError(null)
+    setAudioPath(null)
     resetSteps()
   }
 
   const replayAudio = async () => {
-    if (!audioPath || playing) return
+    if (playing) return
+    if (!audioPath) {
+      Alert.alert('No Audio', 'No audio available to play. Try recording again.')
+      return
+    }
     try {
       if (soundRef.current) {
         try { await soundRef.current.stopAsync() } catch {}
@@ -226,8 +232,10 @@ export function VoiceScreen() {
           soundRef.current = null
         }
       })
-    } catch {
+    } catch (e) {
+      console.warn('Replay failed:', e)
       setPlaying(false)
+      Alert.alert('Playback Error', 'Could not replay audio.')
     }
   }
 
@@ -235,7 +243,6 @@ export function VoiceScreen() {
   const isProcessing  = state === 'processing'
   const orbColor      = isRecording ? c.error : isProcessing ? c.tealLight : c.teal
 
-  // Check if there is navigation intent in the result
   const navIntent = result?.navigation_intent
 
   return (
@@ -283,7 +290,6 @@ export function VoiceScreen() {
             {state === 'error'      && 'Error. Tap to try again'}
           </Text>
 
-          {/* Cancel button — only during recording */}
           {isRecording && (
             <TouchableOpacity
               style={styles.cancelRecordBtn}
@@ -343,7 +349,6 @@ export function VoiceScreen() {
               )}
             </View>
 
-            {/* Navigation intent button — shown when a place is detected */}
             {navIntent?.is_navigation && navIntent.destination ? (
               <View style={styles.navIntentBox}>
                 <Text style={styles.navIntentLabel}>📍 Navigation detected</Text>
@@ -464,7 +469,6 @@ const getStyles = (c: ReturnType<typeof useColors>) => StyleSheet.create({
     borderWidth: 1, borderColor: c.border,
   },
 
-  // Navigation intent box
   navIntentBox: {
     marginTop: spacing.md, backgroundColor: c.teal + '10',
     borderRadius: radius.md, padding: spacing.md,

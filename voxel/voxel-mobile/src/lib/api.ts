@@ -221,3 +221,40 @@ export async function extractNavigation(options: {
     country_bias: options.country_bias ?? "Uganda",
   });
 }
+// ── Sessions ──────────────────────────────────────────────────────────────────
+
+export interface Session {
+  id:         string
+  transcript: string | null
+  clean_text: string | null
+  language:   string | null
+  created_at: string
+  confidence: number | null
+  model_used: string | null
+  audio_url:  string | null
+}
+
+/** Fetch all sessions for the current user via the backend (uses service key, bypasses RLS). */
+export async function fetchSessions(): Promise<Session[]> {
+  const url   = `${BASE}/sessions`
+  const token = getToken()
+  if (!token) throw new Error('Not authenticated')
+  const res = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error(`fetchSessions failed (${res.status})`)
+  return res.json()
+}
+
+/** Delete specific sessions by ID, or all sessions if ids is empty/undefined. */
+export async function deleteSessions(ids?: string[]): Promise<void> {
+  const url   = `${BASE}/sessions`
+  const token = getToken()
+  if (!token) throw new Error('Not authenticated')
+  const res = await fetch(url, {
+    method:  'DELETE',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ ids: ids && ids.length > 0 ? ids : null }),
+  })
+  if (!res.ok && res.status !== 204) throw new Error(`deleteSessions failed (${res.status})`)
+}

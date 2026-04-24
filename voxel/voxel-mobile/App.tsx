@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar'
 import { supabase }          from './src/supabase'
 import { useAuthStore, makeInitials } from './src/store/authStore'
 import { ThemeProvider, useTheme, useColors } from './src/ThemeContext'
+import { healthCheck }       from './src/lib/api'
 
 import { LandingScreen }  from './src/screens/LandingScreen'
 import { LoginScreen }    from './src/screens/LoginScreen'
@@ -25,11 +26,16 @@ function AppInner() {
   const { user, isLoading, setUser, setToken, setLoading } = useAuthStore()
   const { theme, toggle, isDark } = useTheme()
   const c  = useColors()
-  const [authFlow,    setAuthFlow]    = useState<AuthFlow>('landing')
-  const [activeTab,   setActiveTab]   = useState<TabName>('home')
+  const [authFlow,     setAuthFlow]     = useState<AuthFlow>('landing')
+  const [activeTab,    setActiveTab]    = useState<TabName>('home')
   const [showSessions, setShowSessions] = useState(false)
 
   const bg = c.bg
+
+  // Wake up Modal backend as soon as the app opens
+  useEffect(() => {
+    healthCheck().catch(() => {})
+  }, [])
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -130,21 +136,28 @@ function AppInner() {
     )
   }
 
-  const renderScreen = () => {
-    switch (activeTab) {
-      case 'home':     return <HomeScreen     onNavigate={setActiveTab} onOpenSessions={() => setShowSessions(true)} />
-      case 'voice':    return <VoiceScreen    />
-      case 'navigate': return <NavigateScreen />
-      case 'tts':      return <TTSScreen      />
-      case 'settings': return <SettingsScreen theme={theme} onToggleTheme={toggle} isDark={isDark} />
-      default:         return <HomeScreen     onNavigate={setActiveTab} />
-    }
-  }
-
+  // All screens are mounted at all times using display:none trick
+  // This preserves state when switching tabs instead of remounting
   return (
     <View style={[styles.app, { backgroundColor: bg }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      {renderScreen()}
+
+      <View style={[styles.screen, activeTab === 'home'     ? styles.visible : styles.hidden]}>
+        <HomeScreen onNavigate={setActiveTab} onOpenSessions={() => setShowSessions(true)} />
+      </View>
+      <View style={[styles.screen, activeTab === 'voice'    ? styles.visible : styles.hidden]}>
+        <VoiceScreen />
+      </View>
+      <View style={[styles.screen, activeTab === 'navigate' ? styles.visible : styles.hidden]}>
+        <NavigateScreen />
+      </View>
+      <View style={[styles.screen, activeTab === 'tts'      ? styles.visible : styles.hidden]}>
+        <TTSScreen />
+      </View>
+      <View style={[styles.screen, activeTab === 'settings' ? styles.visible : styles.hidden]}>
+        <SettingsScreen theme={theme} onToggleTheme={toggle} isDark={isDark} />
+      </View>
+
       <BottomNav active={activeTab} onPress={setActiveTab} isDark={isDark} />
     </View>
   )
@@ -161,7 +174,10 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  splash: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  splash:     { flex: 1, alignItems: 'center', justifyContent: 'center' },
   splashLogo: { width: 80, height: 80, borderRadius: 20, backgroundColor: '#0b9488', alignItems: 'center', justifyContent: 'center' },
-  app: { flex: 1 },
+  app:        { flex: 1 },
+  screen:     { flex: 1, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  visible:    { display: 'flex' },
+  hidden:     { display: 'none' },
 })

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, ActivityIndicator, Alert,
@@ -32,22 +32,53 @@ export function TTSScreen() {
   const [voice,    setVoice]    = useState('female')
   const [language, setLanguage] = useState<'en'|'lg'>('en')
   const [pitch,    setPitch]    = useState(50)
-  const [rate,     setRate]     = useState(60)
+  const [rate,     setRate]     = useState(50)
   const [loading,  setLoading]  = useState(false)
   const [playing,  setPlaying]  = useState(false)
-  const soundRef = useRef<Audio.Sound | null>(null)
+  const soundRef    = useRef<Audio.Sound | null>(null)
+  const audioPathRef = useRef<string | null>(null)
   const charLimit = 300
+
+  // Clean up sound when component unmounts (tab switch)
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.stopAsync().catch(() => {})
+        soundRef.current.unloadAsync().catch(() => {})
+        soundRef.current = null
+      }
+    }
+  }, [])
+
+  const cleanupSound = async () => {
+    if (soundRef.current) {
+      try { await soundRef.current.stopAsync() } catch {}
+      try { await soundRef.current.unloadAsync() } catch {}
+      soundRef.current = null
+    }
+    if (audioPathRef.current) {
+      FileSystem.deleteAsync(audioPathRef.current, { idempotent: true }).catch(() => {})
+      audioPathRef.current = null
+    }
+    setPlaying(false)
+  }
 
   const handleSpeak = async () => {
     if (!text.trim()) { Alert.alert('Error', 'Enter some text first'); return }
+
+    // Always clean up previous sound fully before creating a new one
+    await cleanupSound()
+
     setLoading(true)
     try {
-      const result = await synthesizeTTS({ text: text.trim(), language, voice: voice as any, pitch, rate })
-      if (soundRef.current) {
-        await soundRef.current.stopAsync()
-        await soundRef.current.unloadAsync()
-      }
-      // Switch audio mode to playback (important on Android)
+      const result = await synthesizeTTS({
+        text:     text.trim(),
+        language,
+        voice:    voice as any,
+        pitch,
+        rate,
+      })
+
       await Audio.setAudioModeAsync({
         allowsRecordingIOS:         false,
         playsInSilentModeIOS:       true,
@@ -55,24 +86,31 @@ export function TTSScreen() {
         playThroughEarpieceAndroid: false,
         staysActiveInBackground:    false,
       })
+
       const audioPath = `${FileSystem.cacheDirectory}voxel_tts_${Date.now()}.wav`
       await FileSystem.writeAsStringAsync(audioPath, result.audio_base64, {
-        encoding: 'base64',
+        encoding: FileSystem.EncodingType.Base64,
       })
+      audioPathRef.current = audioPath
+
       const { sound } = await Audio.Sound.createAsync(
         { uri: audioPath },
         { shouldPlay: true, volume: 1.0 }
       )
       soundRef.current = sound
       setPlaying(true)
+
       sound.setOnPlaybackStatusUpdate(status => {
         if (status.isLoaded && status.didJustFinish) {
           setPlaying(false)
           sound.unloadAsync().catch(() => {})
+          soundRef.current = null
           FileSystem.deleteAsync(audioPath, { idempotent: true }).catch(() => {})
+          audioPathRef.current = null
         }
       })
     } catch (e: unknown) {
+      await cleanupSound()
       Alert.alert('Error', e instanceof Error ? e.message : 'TTS failed')
     } finally {
       setLoading(false)
@@ -80,8 +118,7 @@ export function TTSScreen() {
   }
 
   const handleStop = async () => {
-    await soundRef.current?.stopAsync()
-    setPlaying(false)
+    await cleanupSound()
   }
 
   return (
@@ -134,7 +171,7 @@ export function TTSScreen() {
           ))}
         </View>
 
-        {/* Sliders (simplified with buttons) */}
+        {/* Pitch */}
         <Text style={styles.sectionLabel}>Pitch: {pitch}%</Text>
         <View style={styles.sliderRow}>
           <TouchableOpacity style={styles.sliderBtn} onPress={() => setPitch(p => Math.max(0, p - 10))}>
@@ -148,6 +185,7 @@ export function TTSScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Speed */}
         <Text style={styles.sectionLabel}>Speed: {rate}%</Text>
         <View style={styles.sliderRow}>
           <TouchableOpacity style={styles.sliderBtn} onPress={() => setRate(r => Math.max(20, r - 10))}>
