@@ -4,9 +4,10 @@ import {
   ScrollView, StyleSheet, ActivityIndicator, Alert,
 } from 'react-native'
 import { Audio } from 'expo-av'
-import * as FileSystem from 'expo-file-system'
+import * as FileSystem from 'expo-file-system/legacy'
 import { Header } from '../components/Header'
-import { colors, font, spacing, radius } from '../theme'
+import { font, spacing, radius } from '../theme'
+import { useColors } from '../ThemeContext'
 import { synthesizeTTS } from '../lib/api'
 
 const VOICES = [
@@ -25,6 +26,8 @@ const QUICK_PHRASES = [
 ]
 
 export function TTSScreen() {
+  const c = useColors()
+  const styles = getStyles(c)
   const [text,     setText]     = useState('')
   const [voice,    setVoice]    = useState('female')
   const [language, setLanguage] = useState<'en'|'lg'>('en')
@@ -44,20 +47,30 @@ export function TTSScreen() {
         await soundRef.current.stopAsync()
         await soundRef.current.unloadAsync()
       }
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true })
-      // Save base64 to temp file then play
-      const audioPath = `${FileSystem.cacheDirectory}tts_output.wav`
+      // Switch audio mode to playback (important on Android)
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS:         false,
+        playsInSilentModeIOS:       true,
+        shouldDuckAndroid:          false,
+        playThroughEarpieceAndroid: false,
+        staysActiveInBackground:    false,
+      })
+      const audioPath = `${FileSystem.cacheDirectory}voxel_tts_${Date.now()}.wav`
       await FileSystem.writeAsStringAsync(audioPath, result.audio_base64, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: 'base64',
       })
       const { sound } = await Audio.Sound.createAsync(
         { uri: audioPath },
-        { shouldPlay: true }
+        { shouldPlay: true, volume: 1.0 }
       )
       soundRef.current = sound
       setPlaying(true)
       sound.setOnPlaybackStatusUpdate(status => {
-        if (status.isLoaded && status.didJustFinish) setPlaying(false)
+        if (status.isLoaded && status.didJustFinish) {
+          setPlaying(false)
+          sound.unloadAsync().catch(() => {})
+          FileSystem.deleteAsync(audioPath, { idempotent: true }).catch(() => {})
+        }
       })
     } catch (e: unknown) {
       Alert.alert('Error', e instanceof Error ? e.message : 'TTS failed')
@@ -96,7 +109,7 @@ export function TTSScreen() {
           <TextInput
             style={styles.textInput}
             placeholder="Type something to speak…"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={c.textMuted}
             value={text}
             onChangeText={t => setText(t.slice(0, charLimit))}
             multiline
@@ -180,8 +193,8 @@ export function TTSScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  flex:    { flex: 1, backgroundColor: colors.bg },
+const getStyles = (c: ReturnType<typeof useColors>) => StyleSheet.create({
+  flex:    { flex: 1, backgroundColor: c.bg },
   content: { paddingHorizontal: spacing.lg, paddingBottom: 120 },
 
   row: {
@@ -194,31 +207,31 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius:    radius.md,
     alignItems:      'center',
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     borderWidth:     1,
-    borderColor:     colors.border,
+    borderColor:     c.border,
   },
-  toggleBtnActive: { backgroundColor: colors.teal + '20', borderColor: colors.teal },
-  toggleText:      { fontSize: font.sm, color: colors.textSub, fontWeight: '600' },
-  toggleTextActive: { color: colors.teal },
+  toggleBtnActive: { backgroundColor: c.teal + '20', borderColor: c.teal },
+  toggleText:      { fontSize: font.sm, color: c.textSub, fontWeight: '600' },
+  toggleTextActive: { color: c.teal },
 
   inputCard: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     borderRadius:    radius.lg,
     borderWidth:     1,
-    borderColor:     colors.border,
+    borderColor:     c.border,
     padding:         spacing.md,
     marginVertical:  spacing.sm,
   },
   textInput: {
     fontSize:   font.md,
-    color:      colors.text,
+    color:      c.text,
     minHeight:  100,
     lineHeight: 24,
   },
   charCount: {
     fontSize:  font.xs,
-    color:     colors.textMuted,
+    color:     c.textMuted,
     textAlign: 'right',
     marginTop: spacing.xs,
   },
@@ -226,7 +239,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize:     font.sm,
     fontWeight:   '700',
-    color:        colors.textSub,
+    color:        c.textSub,
     marginTop:    spacing.md,
     marginBottom: spacing.xs,
     textTransform: 'uppercase',
@@ -238,15 +251,15 @@ const styles = StyleSheet.create({
     alignItems:      'center',
     paddingVertical: spacing.sm,
     borderRadius:    radius.md,
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     borderWidth:     1,
-    borderColor:     colors.border,
+    borderColor:     c.border,
     gap:             4,
   },
-  voiceBtnActive: { backgroundColor: colors.purple + '20', borderColor: colors.purple },
+  voiceBtnActive: { backgroundColor: c.purple + '20', borderColor: c.purple },
   voiceEmoji:     { fontSize: 24 },
-  voiceLabel:     { fontSize: font.xs, color: colors.textSub, fontWeight: '600' },
-  voiceLabelActive: { color: colors.purple },
+  voiceLabel:     { fontSize: font.xs, color: c.textSub, fontWeight: '600' },
+  voiceLabelActive: { color: c.purple },
 
   sliderRow: {
     flexDirection:  'row',
@@ -258,28 +271,28 @@ const styles = StyleSheet.create({
     width:          36,
     height:         36,
     borderRadius:   18,
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     alignItems:     'center',
     justifyContent: 'center',
     borderWidth:    1,
-    borderColor:    colors.border,
+    borderColor:    c.border,
   },
-  sliderBtnText: { fontSize: font.lg, color: colors.text, fontWeight: '700' },
+  sliderBtnText: { fontSize: font.lg, color: c.text, fontWeight: '700' },
   sliderTrack: {
     flex:            1,
     height:          6,
     borderRadius:    3,
-    backgroundColor: colors.bgElevated,
+    backgroundColor: c.bgElevated,
     overflow:        'hidden',
   },
   sliderFill: {
     height:          6,
-    backgroundColor: colors.teal,
+    backgroundColor: c.teal,
     borderRadius:    3,
   },
 
   speakBtn: {
-    backgroundColor: colors.teal,
+    backgroundColor: c.teal,
     borderRadius:    radius.md,
     paddingVertical: spacing.md,
     alignItems:      'center',
@@ -294,12 +307,12 @@ const styles = StyleSheet.create({
     gap:           spacing.sm,
   },
   phraseChip: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     borderRadius:    radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical:   spacing.xs + 2,
     borderWidth:     1,
-    borderColor:     colors.border,
+    borderColor:     c.border,
   },
-  phraseText: { fontSize: font.sm, color: colors.textSub },
+  phraseText: { fontSize: font.sm, color: c.textSub },
 })

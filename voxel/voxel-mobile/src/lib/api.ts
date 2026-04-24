@@ -4,8 +4,14 @@
  */
 
 import { BACKEND_BASE_URL, API_PREFIX } from "../config";
+import { useAuthStore } from "../store/authStore";
 
 const BASE = `${BACKEND_BASE_URL}${API_PREFIX}`;
+
+/** Get the current access token from the auth store (works outside React components). */
+function getToken(): string | null {
+  return useAuthStore.getState().accessToken;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -51,9 +57,12 @@ async function post<T>(path: string, body: object, retries = 1): Promise<T> {
       await new Promise(r => setTimeout(r, 3000));
     }
     try {
+      const token   = getToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       const res = await fetch(url, {
         method:  "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body:    JSON.stringify(body),
       });
       if (res.status === 404) {
@@ -93,9 +102,13 @@ async function postForm<T>(path: string, form: FormData, retries = 1): Promise<T
       await new Promise(r => setTimeout(r, 3000));
     }
     try {
+      const token   = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       const res = await fetch(url, {
-        method: "POST",
-        body:   form,
+        method:  "POST",
+        headers,
+        body:    form,
       });
       if (res.status === 404) {
         const text = await res.text().catch(() => res.statusText);

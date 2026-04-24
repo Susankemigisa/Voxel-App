@@ -6,7 +6,8 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../supabase'
-import { colors, font, spacing, radius } from '../theme'
+import { font, spacing, radius } from '../theme'
+import { useColors } from '../ThemeContext'
 
 interface Props {
   onSwitch: () => void
@@ -14,6 +15,8 @@ interface Props {
 }
 
 export function LoginScreen({ onSwitch, onBack }: Props) {
+  const c = useColors()
+  const styles = getStyles(c)
   const insets = useSafeAreaInsets()
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
@@ -86,7 +89,7 @@ export function LoginScreen({ onSwitch, onBack }: Props) {
               <TextInput
                 style={styles.input}
                 placeholder="name@example.com"
-                placeholderTextColor={colors.textMuted}
+                placeholderTextColor={c.textMuted}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -108,7 +111,7 @@ export function LoginScreen({ onSwitch, onBack }: Props) {
               <TextInput
                 style={[styles.input, { flex: 1 }]}
                 placeholder="••••••••"
-                placeholderTextColor={colors.textMuted}
+                placeholderTextColor={c.textMuted}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPass}
@@ -143,43 +146,43 @@ export function LoginScreen({ onSwitch, onBack }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
-  flex:      { flex: 1, backgroundColor: colors.bg },
+const getStyles = (c: ReturnType<typeof useColors>) => StyleSheet.create({
+  flex:      { flex: 1, backgroundColor: c.bg },
   container: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   backBtn:   { marginBottom: spacing.md },
-  backText:  { fontSize: font.md, color: colors.textSub, fontWeight: '600' },
+  backText:  { fontSize: font.md, color: c.textSub, fontWeight: '600' },
   logoWrap:  { alignItems: 'center', marginBottom: spacing.lg },
-  logo:      { width: 64, height: 64, borderRadius: 18, backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
+  logo:      { width: 64, height: 64, borderRadius: 18, backgroundColor: c.teal, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
   logoIcon:  { fontSize: 30 },
-  appName:   { fontSize: font.xxl, fontWeight: '800', color: colors.text, letterSpacing: 1 },
-  tagline:   { fontSize: font.sm, color: colors.textSub, marginTop: 2 },
-  tabs:      { flexDirection: 'row', backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 4, marginBottom: spacing.md },
-  tabActive: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.teal },
+  appName:   { fontSize: font.xxl, fontWeight: '800', color: c.text, letterSpacing: 1 },
+  tagline:   { fontSize: font.sm, color: c.textSub, marginTop: 2 },
+  tabs:      { flexDirection: 'row', backgroundColor: c.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, padding: 4, marginBottom: spacing.md },
+  tabActive: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.md, alignItems: 'center', backgroundColor: c.teal },
   tabActiveText: { fontSize: font.sm, fontWeight: '700', color: '#fff' },
   tabInactive:   { flex: 1, paddingVertical: spacing.sm, alignItems: 'center' },
-  tabInactiveText: { fontSize: font.sm, color: colors.textSub },
-  card:      { backgroundColor: colors.bgCard, borderRadius: radius.xl, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
-  cardTitle: { fontSize: font.xl, fontWeight: '700', color: colors.text, marginBottom: 4 },
-  cardSub:   { fontSize: font.sm, color: colors.textSub, marginBottom: spacing.lg },
+  tabInactiveText: { fontSize: font.sm, color: c.textSub },
+  card:      { backgroundColor: c.bgCard, borderRadius: radius.xl, padding: spacing.lg, borderWidth: 1, borderColor: c.border },
+  cardTitle: { fontSize: font.xl, fontWeight: '700', color: c.text, marginBottom: 4 },
+  cardSub:   { fontSize: font.sm, color: c.textSub, marginBottom: spacing.lg },
   field:     { marginBottom: spacing.md },
   labelRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
-  label:     { fontSize: font.sm, color: colors.textSub, marginBottom: spacing.xs, fontWeight: '600' },
-  forgotText: { fontSize: font.xs, color: colors.teal, fontWeight: '600' },
-  inputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgElevated, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md },
+  label:     { fontSize: font.sm, color: c.textSub, marginBottom: spacing.xs, fontWeight: '600' },
+  forgotText: { fontSize: font.xs, color: c.teal, fontWeight: '600' },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.bgElevated, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md },
   inputIcon: { fontSize: 16, marginRight: spacing.sm },
-  input:     { flex: 1, paddingVertical: spacing.sm + 4, fontSize: font.md, color: colors.text },
+  input:     { flex: 1, paddingVertical: spacing.sm + 4, fontSize: font.md, color: c.text },
   eyeBtn:    { padding: spacing.xs },
   eyeIcon:   { fontSize: 16 },
-  btn:       { backgroundColor: colors.teal, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center', marginTop: spacing.sm },
+  btn:       { backgroundColor: c.teal, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: 'center', marginTop: spacing.sm },
   btnDisabled: { opacity: 0.6 },
   btnText:   { fontSize: font.md, fontWeight: '700', color: '#fff' },
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: spacing.md, gap: spacing.sm },
-  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { fontSize: font.xs, color: colors.textMuted, fontWeight: '600' },
-  googleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.bgElevated, borderRadius: radius.md, paddingVertical: spacing.sm + 4, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.md },
+  dividerLine: { flex: 1, height: 1, backgroundColor: c.border },
+  dividerText: { fontSize: font.xs, color: c.textMuted, fontWeight: '600' },
+  googleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: c.bgElevated, borderRadius: radius.md, paddingVertical: spacing.sm + 4, borderWidth: 1, borderColor: c.border, marginBottom: spacing.md },
   googleG:   { fontSize: font.lg, fontWeight: '800', color: '#4285F4' },
-  googleText: { fontSize: font.md, color: colors.text, fontWeight: '600' },
+  googleText: { fontSize: font.md, color: c.text, fontWeight: '600' },
   switchWrap: { alignItems: 'center', marginTop: spacing.xs },
-  switchText: { fontSize: font.sm, color: colors.textSub },
-  switchLink: { color: colors.teal, fontWeight: '700' },
+  switchText: { fontSize: font.sm, color: c.textSub },
+  switchLink: { color: c.teal, fontWeight: '700' },
 })

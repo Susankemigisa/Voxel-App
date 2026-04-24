@@ -4,7 +4,8 @@ import {
   Animated, Dimensions,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { colors, font, spacing, radius } from '../theme'
+import { font, spacing, radius } from '../theme'
+import { useColors } from '../ThemeContext'
 
 const { width } = Dimensions.get('window')
 
@@ -70,6 +71,8 @@ const wave = StyleSheet.create({
 })
 
 export function LandingScreen({ onGetStarted, onSignIn }: Props) {
+  const c = useColors()
+  const styles = getStyles(c)
   const insets = useSafeAreaInsets()
 
   const fadeAnim  = useRef(new Animated.Value(0)).current
@@ -156,10 +159,10 @@ export function LandingScreen({ onGetStarted, onSignIn }: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const getStyles = (c: ReturnType<typeof useColors>) => StyleSheet.create({
   container: {
     flex:            1,
-    backgroundColor: colors.bg,
+    backgroundColor: c.bg,
     paddingHorizontal: spacing.lg,
     paddingBottom:   spacing.xl,
   },
@@ -175,7 +178,7 @@ const styles = StyleSheet.create({
     width:          32,
     height:         32,
     borderRadius:   8,
-    backgroundColor: colors.text,
+    backgroundColor: c.text,
     alignItems:     'center',
     justifyContent: 'center',
   },
@@ -183,7 +186,7 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize:    font.md,
     fontWeight:  '800',
-    color:       colors.text,
+    color:       c.text,
     letterSpacing: 2,
   },
   signInTopBtn: {
@@ -191,37 +194,37 @@ const styles = StyleSheet.create({
     paddingVertical:   spacing.xs,
     borderRadius:      radius.md,
     borderWidth:       1,
-    borderColor:       colors.border,
+    borderColor:       c.border,
   },
-  signInTopText: { fontSize: font.sm, color: colors.text, fontWeight: '600' },
+  signInTopText: { fontSize: font.sm, color: c.text, fontWeight: '600' },
 
   badge: {
     flexDirection:     'row',
     alignItems:        'center',
     alignSelf:         'center',
     gap:               spacing.xs,
-    backgroundColor:   colors.bgCard,
+    backgroundColor:   c.bgCard,
     paddingHorizontal: spacing.md,
     paddingVertical:   spacing.xs,
     borderRadius:      radius.full,
     borderWidth:       1,
-    borderColor:       colors.border,
+    borderColor:       c.border,
     marginVertical:    spacing.lg,
   },
   badgeDot: {
     width:           6,
     height:          6,
     borderRadius:    3,
-    backgroundColor: colors.teal,
+    backgroundColor: c.teal,
   },
-  badgeText: { fontSize: font.xs, color: colors.textSub },
+  badgeText: { fontSize: font.xs, color: c.textSub },
 
   hero:      { alignItems: 'center' },
   heroLogo: {
     width:          64,
     height:         64,
     borderRadius:   32,
-    backgroundColor: colors.text,
+    backgroundColor: c.text,
     alignItems:     'center',
     justifyContent: 'center',
     marginBottom:   spacing.lg,
@@ -230,14 +233,14 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize:   font.xxxl,
     fontWeight: '800',
-    color:      colors.text,
+    color:      c.text,
     textAlign:  'center',
     lineHeight: 40,
   },
-  heroTitleTeal: { color: colors.teal },
+  heroTitleTeal: { color: c.teal },
   heroSub: {
     fontSize:    font.sm,
-    color:       colors.textSub,
+    color:       c.textSub,
     textAlign:   'center',
     lineHeight:  22,
     marginTop:   spacing.md,
@@ -246,7 +249,7 @@ const styles = StyleSheet.create({
 
   waveLabel: {
     fontSize:  font.xs,
-    color:     colors.textMuted,
+    color:     c.textMuted,
     textAlign: 'center',
     marginBottom: spacing.lg,
   },
@@ -258,7 +261,7 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     flex:            1,
-    backgroundColor: colors.teal,
+    backgroundColor: c.teal,
     borderRadius:    radius.md,
     paddingVertical: spacing.md,
     alignItems:      'center',
@@ -266,25 +269,25 @@ const styles = StyleSheet.create({
   primaryBtnText: { fontSize: font.md, fontWeight: '700', color: '#fff' },
   secondaryBtn: {
     flex:            1,
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     borderRadius:    radius.md,
     paddingVertical: spacing.md,
     alignItems:      'center',
     borderWidth:     1,
-    borderColor:     colors.border,
+    borderColor:     c.border,
   },
-  secondaryBtnText: { fontSize: font.md, fontWeight: '600', color: colors.text },
+  secondaryBtnText: { fontSize: font.md, fontWeight: '600', color: c.text },
 
   statsRow: {
     flexDirection:   'row',
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     borderRadius:    radius.lg,
     borderWidth:     1,
-    borderColor:     colors.border,
+    borderColor:     c.border,
     paddingVertical: spacing.md,
   },
   statItem: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: font.lg, fontWeight: '800', color: colors.text },
-  statLabel: { fontSize: font.xs, color: colors.textSub, marginTop: 2 },
-  statDivider: { width: 1, backgroundColor: colors.border },
+  statValue: { fontSize: font.lg, fontWeight: '800', color: c.text },
+  statLabel: { fontSize: font.xs, color: c.textSub, marginTop: 2 },
+  statDivider: { width: 1, backgroundColor: c.border },
 })

@@ -16,9 +16,7 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('dark')
-
   const toggle = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
-
   return (
     <ThemeContext.Provider value={{ theme, toggle, isDark: theme === 'dark' }}>
       {children}
@@ -30,8 +28,9 @@ export function useTheme() {
   return useContext(ThemeContext)
 }
 
-// Dynamic colors based on theme
-export function getColors(isDark: boolean) {
+/** Call this inside any screen to get theme-aware colors. */
+export function useColors() {
+  const { isDark } = useContext(ThemeContext)
   return {
     teal:        '#0b9488',
     tealDark:    '#0a6560',

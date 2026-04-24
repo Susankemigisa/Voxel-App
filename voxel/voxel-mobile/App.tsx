@@ -5,8 +5,7 @@ import { StatusBar } from 'expo-status-bar'
 
 import { supabase }          from './src/supabase'
 import { useAuthStore, makeInitials } from './src/store/authStore'
-import { ThemeProvider, useTheme }   from './src/ThemeContext'
-import { colors }            from './src/theme'
+import { ThemeProvider, useTheme, useColors } from './src/ThemeContext'
 
 import { LandingScreen }  from './src/screens/LandingScreen'
 import { LoginScreen }    from './src/screens/LoginScreen'
@@ -16,6 +15,7 @@ import { VoiceScreen }    from './src/screens/VoiceScreen'
 import { NavigateScreen } from './src/screens/NavigateScreen'
 import { TTSScreen }      from './src/screens/TTSScreen'
 import { SettingsScreen } from './src/screens/SettingsScreen'
+import { SessionsScreen } from './src/screens/SessionsScreen'
 import { BottomNav }      from './src/components/BottomNav'
 import type { TabName }   from './src/components/BottomNav'
 
@@ -24,10 +24,12 @@ type AuthFlow = 'landing' | 'login' | 'register'
 function AppInner() {
   const { user, isLoading, setUser, setToken, setLoading } = useAuthStore()
   const { theme, toggle, isDark } = useTheme()
-  const [authFlow,  setAuthFlow]  = useState<AuthFlow>('landing')
-  const [activeTab, setActiveTab] = useState<TabName>('home')
+  const c  = useColors()
+  const [authFlow,    setAuthFlow]    = useState<AuthFlow>('landing')
+  const [activeTab,   setActiveTab]   = useState<TabName>('home')
+  const [showSessions, setShowSessions] = useState(false)
 
-  const bg = isDark ? colors.bg : '#f0f4ff'
+  const bg = c.bg
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -119,9 +121,18 @@ function AppInner() {
     )
   }
 
+  if (showSessions) {
+    return (
+      <View style={[styles.app, { backgroundColor: bg }]}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <SessionsScreen onBack={() => setShowSessions(false)} />
+      </View>
+    )
+  }
+
   const renderScreen = () => {
     switch (activeTab) {
-      case 'home':     return <HomeScreen     onNavigate={setActiveTab} />
+      case 'home':     return <HomeScreen     onNavigate={setActiveTab} onOpenSessions={() => setShowSessions(true)} />
       case 'voice':    return <VoiceScreen    />
       case 'navigate': return <NavigateScreen />
       case 'tts':      return <TTSScreen      />
@@ -151,6 +162,6 @@ export default function App() {
 
 const styles = StyleSheet.create({
   splash: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  splashLogo: { width: 80, height: 80, borderRadius: 20, backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center' },
+  splashLogo: { width: 80, height: 80, borderRadius: 20, backgroundColor: '#0b9488', alignItems: 'center', justifyContent: 'center' },
   app: { flex: 1 },
 })

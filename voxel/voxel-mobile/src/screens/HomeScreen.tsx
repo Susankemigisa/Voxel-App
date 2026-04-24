@@ -5,12 +5,14 @@ import {
 } from 'react-native'
 import { useAuthStore } from '../store/authStore'
 import { Header } from '../components/Header'
-import { colors, font, spacing, radius } from '../theme'
+import { font, spacing, radius } from '../theme'
+import { useColors } from '../ThemeContext'
 import { supabase } from '../supabase'
 import type { TabName } from '../components/BottomNav'
 
 interface Props {
-  onNavigate: (tab: TabName) => void
+  onNavigate:      (tab: TabName) => void
+  onOpenSessions?: () => void
 }
 
 function useGreeting(name: string) {
@@ -34,7 +36,6 @@ function formatRelative(dateStr: string): string {
 
 function WaveAnimation() {
   const anims = useRef([...Array(12)].map(() => new Animated.Value(0.3))).current
-
   useEffect(() => {
     const loops = anims.map((anim, i) =>
       Animated.loop(
@@ -48,33 +49,28 @@ function WaveAnimation() {
     loops.forEach(l => l.start())
     return () => loops.forEach(l => l.stop())
   }, [])
-
   return (
-    <View style={wave.container}>
+    <View style={s.waveContainer}>
       {anims.map((anim, i) => (
-        <Animated.View key={`wave-${i}`} style={[wave.bar, { transform: [{ scaleY: anim }] }]} />
+        <Animated.View key={`w-${i}`} style={[s.waveBar, { transform: [{ scaleY: anim }] }]} />
       ))}
     </View>
   )
 }
 
-const wave = StyleSheet.create({
-  container: { flexDirection: 'row', alignItems: 'center', height: 32, gap: 3, marginTop: spacing.sm },
-  bar:       { width: 3, height: 20, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.4)' },
-})
-
-const QUICK_ACTIONS = [
-  { tab: 'voice'    as TabName, icon: '🎙️', title: 'Voice Input',    sub: 'Speak naturally',   bg: colors.teal   },
-  { tab: 'navigate' as TabName, icon: '🧭', title: 'Navigate',       sub: 'Get directions',    bg: colors.blue   },
-  { tab: 'tts'      as TabName, icon: '🔊', title: 'Text to Speech', sub: 'Convert & hear it', bg: colors.purple },
-]
-
 interface Stats   { sessions: number; accuracy: number; languages: number }
 interface Session { id: string; transcript: string; language: string; created_at: string }
 
-export function HomeScreen({ onNavigate }: Props) {
+export function HomeScreen({ onNavigate, onOpenSessions }: Props) {
+  const c        = useColors()
   const user     = useAuthStore(s => s.user)
   const greeting = useGreeting(user?.displayName?.split(' ')[0] || '')
+
+  const QUICK_ACTIONS = [
+    { tab: 'voice'    as TabName, icon: '🎙️', title: 'Voice Input',    sub: 'Speak naturally',   bg: c.teal   },
+    { tab: 'navigate' as TabName, icon: '🧭', title: 'Navigate',       sub: 'Get directions',    bg: c.blue   },
+    { tab: 'tts'      as TabName, icon: '🔊', title: 'Text to Speech', sub: 'Convert & hear it', bg: c.purple },
+  ]
 
   const [stats,   setStats]   = useState<Stats>({ sessions: 0, accuracy: 0, languages: 0 })
   const [recent,  setRecent]  = useState<Session[]>([])
@@ -92,14 +88,12 @@ export function HomeScreen({ onNavigate }: Props) {
         .select('id, transcript, language, confidence, created_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-        .limit(50)
-
       if (data && data.length > 0) {
-        const sessions  = data.length
-        const avgConf   = data.reduce((s, r) => s + (r.confidence || 0.9), 0) / sessions
-        const langs     = new Set(data.map(r => r.language)).size
+        const sessions = data.length
+        const avgConf  = data.reduce((s, r) => s + (r.confidence || 0.9), 0) / sessions
+        const langs    = new Set(data.map(r => r.language)).size
         setStats({ sessions, accuracy: Math.round(avgConf * 100), languages: langs })
-        setRecent(data.slice(0, 3) as Session[])
+        setRecent(data.slice(0, 5) as Session[])
       }
     } catch { /* ignore */ }
     finally   { setLoading(false) }
@@ -112,148 +106,151 @@ export function HomeScreen({ onNavigate }: Props) {
   ]
 
   return (
-    <View style={styles.flex}>
+    <View style={[s.flex, { backgroundColor: c.bg }]}>
       <Header />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.flex} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 
         {/* Hero */}
-        <View style={styles.hero}>
-          <View style={styles.heroDot} />
-          <View style={styles.heroTop}>
-            <View style={styles.heroUserBadge}>
-              <View style={styles.heroCircle}>
-                <Text style={styles.heroInitials}>{user?.initials || '?'}</Text>
+        <View style={[s.hero, { backgroundColor: c.teal }]}>
+          <View style={s.heroDot} />
+          <View style={s.heroTop}>
+            <View style={s.heroUserBadge}>
+              <View style={s.heroCircle}>
+                <Text style={s.heroInitials}>{user?.initials || '?'}</Text>
               </View>
               <View>
-                <Text style={styles.heroWelcome}>Welcome back</Text>
-                <Text style={styles.heroName}>{user?.displayName?.split(' ')[0] || 'there'}</Text>
+                <Text style={s.heroWelcome}>Welcome back</Text>
+                <Text style={s.heroName}>{user?.displayName?.split(' ')[0] || 'there'}</Text>
               </View>
             </View>
-            <View style={styles.aiBadge}>
-              <View style={styles.aiDot} />
-              <Text style={styles.aiBadgeText}>AI Ready</Text>
+            <View style={s.aiBadge}>
+              <View style={s.aiDot} />
+              <Text style={s.aiBadgeText}>AI Ready</Text>
             </View>
           </View>
-          <Text style={styles.heroGreeting}>{greeting}</Text>
-          <Text style={styles.heroSub}>What would you like to communicate today?</Text>
+          <Text style={s.heroGreeting}>{greeting}</Text>
+          <Text style={s.heroSub}>What would you like to communicate today?</Text>
           <WaveAnimation />
         </View>
 
         {/* Quick actions */}
-        <View style={styles.actionsRow}>
+        <View style={s.actionsRow}>
           {QUICK_ACTIONS.map(action => (
             <TouchableOpacity
               key={action.tab}
-              style={[styles.actionCard, { borderColor: action.bg + '40' }]}
+              style={[s.actionCard, { backgroundColor: c.bgCard, borderColor: action.bg + '40' }]}
               onPress={() => onNavigate(action.tab)}
               activeOpacity={0.8}
             >
-              <View style={[styles.actionIcon, { backgroundColor: action.bg }]}>
-                <Text style={styles.actionEmoji}>{action.icon}</Text>
+              <View style={[s.actionIcon, { backgroundColor: action.bg }]}>
+                <Text style={s.actionEmoji}>{action.icon}</Text>
               </View>
-              <Text style={styles.actionTitle}>{action.title}</Text>
-              <Text style={styles.actionSub}>{action.sub}</Text>
-              <Text style={[styles.actionArrow, { color: action.bg }]}>›</Text>
+              <Text style={[s.actionTitle, { color: c.text }]}>{action.title}</Text>
+              <Text style={[s.actionSub, { color: c.textSub }]}>{action.sub}</Text>
+              <Text style={[s.actionArrow, { color: action.bg }]}>›</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Activity stats */}
-        <View style={styles.activityCard}>
-          <Text style={styles.sectionTitle}>YOUR ACTIVITY</Text>
-          <View style={styles.statsRow}>
-            {STAT_ITEMS.map((s, i) => (
-              <React.Fragment key={s.label}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{s.value}</Text>
-                  <Text style={styles.statLabel}>{s.label}</Text>
+        <View style={[s.activityCard, { backgroundColor: c.bgCard, borderColor: c.border }]}>
+          <Text style={[s.sectionTitle, { color: c.textMuted }]}>YOUR ACTIVITY</Text>
+          <View style={s.statsRow}>
+            {STAT_ITEMS.map((st, i) => (
+              <React.Fragment key={st.label}>
+                <View style={s.statItem}>
+                  <Text style={[s.statValue, { color: c.text }]}>{st.value}</Text>
+                  <Text style={[s.statLabel, { color: c.textSub }]}>{st.label}</Text>
                 </View>
-                {i < STAT_ITEMS.length - 1 && <View style={styles.statDivider} />}
+                {i < STAT_ITEMS.length - 1 && <View style={[s.statDivider, { backgroundColor: c.border }]} />}
               </React.Fragment>
             ))}
           </View>
         </View>
 
         {/* Recent sessions */}
-        <View style={styles.recentCard}>
-          <View style={styles.recentHeader}>
-            <View style={styles.recentLeft}>
-              <Text style={styles.recentIcon}>🕐</Text>
+        <TouchableOpacity
+          style={[s.recentCard, { backgroundColor: c.bgCard, borderColor: c.border }]}
+          onPress={onOpenSessions}
+          activeOpacity={0.8}
+        >
+          <View style={s.recentHeader}>
+            <View style={s.recentLeft}>
+              <Text style={s.recentIcon}>🕐</Text>
               <View>
-                <Text style={styles.recentTitle}>Recent Sessions</Text>
-                <Text style={styles.recentSub}>
+                <Text style={[s.recentTitle, { color: c.text }]}>Recent Sessions</Text>
+                <Text style={[s.recentSub, { color: c.textSub }]}>
                   {stats.sessions > 0 ? `${stats.sessions} transcription${stats.sessions !== 1 ? 's' : ''}` : 'No sessions yet'}
                 </Text>
               </View>
             </View>
-            <Text style={styles.arrow}>›</Text>
+            <Text style={[s.arrow, { color: c.textMuted }]}>›</Text>
           </View>
-
           {recent.length > 0 && (
-            <View style={styles.recentList}>
+            <View style={[s.recentList, { borderTopColor: c.border }]}>
               {recent.map((session, i) => (
-                <View key={session.id} style={[styles.recentItem, i < recent.length - 1 && styles.recentItemBorder]}>
-                  <Text style={styles.recentItemText} numberOfLines={1}>{session.transcript}</Text>
-                  <Text style={styles.recentItemMeta}>
+                <View key={session.id} style={[s.recentItem, i < recent.length - 1 && { borderBottomWidth: 1, borderBottomColor: c.border }]}>
+                  <Text style={[s.recentItemText, { color: c.text }]} numberOfLines={1}>{session.transcript}</Text>
+                  <Text style={[s.recentItemMeta, { color: c.textSub }]}>
                     {session.language?.toUpperCase()} · {formatRelative(session.created_at)}
                   </Text>
                 </View>
               ))}
             </View>
           )}
-        </View>
+        </TouchableOpacity>
 
       </ScrollView>
     </View>
   )
 }
 
-const styles = StyleSheet.create({
-  flex:    { flex: 1, backgroundColor: colors.bg },
-  scroll:  { flex: 1 },
+const s = StyleSheet.create({
+  flex:    { flex: 1 },
   content: { paddingHorizontal: spacing.lg, paddingBottom: 120 },
 
-  hero: { backgroundColor: colors.teal, borderRadius: radius.xxl, padding: spacing.lg, marginBottom: spacing.md, marginTop: spacing.sm, overflow: 'hidden' },
-  heroDot: { position: 'absolute', width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.08)', top: -40, right: -40 },
-  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
-  heroUserBadge: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  heroCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
+  hero:         { borderRadius: radius.xxl, padding: spacing.lg, marginBottom: spacing.md, marginTop: spacing.sm, overflow: 'hidden' },
+  heroDot:      { position: 'absolute', width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.08)', top: -40, right: -40 },
+  heroTop:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
+  heroUserBadge:{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  heroCircle:   { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
   heroInitials: { fontSize: font.sm, fontWeight: '700', color: '#fff' },
   heroWelcome:  { fontSize: font.xs, color: 'rgba(255,255,255,0.7)' },
   heroName:     { fontSize: font.sm, fontWeight: '700', color: '#fff' },
-  aiBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.full },
-  aiDot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: '#4ade80' },
-  aiBadgeText: { fontSize: font.xs, color: '#fff', fontWeight: '600' },
+  aiBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: 999 },
+  aiDot:        { width: 6, height: 6, borderRadius: 3, backgroundColor: '#4ade80' },
+  aiBadgeText:  { fontSize: font.xs, color: '#fff', fontWeight: '600' },
   heroGreeting: { fontSize: font.xl, fontWeight: '800', color: '#fff' },
   heroSub:      { fontSize: font.sm, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
 
-  actionsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  actionCard: { flex: 1, borderRadius: radius.lg, padding: spacing.sm, borderWidth: 1, alignItems: 'center', gap: 4, backgroundColor: colors.bgCard },
-  actionIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  waveContainer: { flexDirection: 'row', alignItems: 'center', height: 32, gap: 3, marginTop: spacing.sm },
+  waveBar:       { width: 3, height: 20, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.4)' },
+
+  actionsRow:  { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  actionCard:  { flex: 1, borderRadius: radius.lg, padding: spacing.sm, borderWidth: 1, alignItems: 'center', gap: 4 },
+  actionIcon:  { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   actionEmoji: { fontSize: 22 },
-  actionTitle: { fontSize: font.xs, fontWeight: '700', color: colors.text, textAlign: 'center' },
-  actionSub:   { fontSize: 10, color: colors.textSub, textAlign: 'center' },
+  actionTitle: { fontSize: font.xs, fontWeight: '700', textAlign: 'center' },
+  actionSub:   { fontSize: 10, textAlign: 'center' },
   actionArrow: { fontSize: font.lg, fontWeight: '700' },
 
-  activityCard: { backgroundColor: colors.bgCard, borderRadius: radius.xl, padding: spacing.md, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm },
-  sectionTitle: { fontSize: font.xs, fontWeight: '700', color: colors.textMuted, letterSpacing: 1, marginBottom: spacing.md },
-  statsRow:    { flexDirection: 'row', justifyContent: 'space-around' },
-  statItem:    { alignItems: 'center', flex: 1 },
-  statValue:   { fontSize: font.xxl, fontWeight: '800', color: colors.text },
-  statLabel:   { fontSize: font.xs, color: colors.textSub, marginTop: 2 },
-  statDivider: { width: 1, backgroundColor: colors.border },
+  activityCard: { borderRadius: radius.xl, padding: spacing.md, borderWidth: 1, marginBottom: spacing.sm },
+  sectionTitle: { fontSize: font.xs, fontWeight: '700', letterSpacing: 1, marginBottom: spacing.md },
+  statsRow:     { flexDirection: 'row', justifyContent: 'space-around' },
+  statItem:     { alignItems: 'center', flex: 1 },
+  statValue:    { fontSize: font.xxl, fontWeight: '800' },
+  statLabel:    { fontSize: font.xs, marginTop: 2 },
+  statDivider:  { width: 1 },
 
-  recentCard: { backgroundColor: colors.bgCard, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.md, overflow: 'hidden' },
-  recentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.md },
-  recentLeft:   { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  recentIcon:   { fontSize: 24 },
-  recentTitle:  { fontSize: font.md, fontWeight: '700', color: colors.text },
-  recentSub:    { fontSize: font.xs, color: colors.textSub, marginTop: 2 },
-  arrow:        { fontSize: font.xl, color: colors.textMuted },
-
-  recentList:   { borderTopWidth: 1, borderTopColor: colors.border },
-  recentItem:   { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
-  recentItemBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  recentItemText: { fontSize: font.sm, color: colors.text },
-  recentItemMeta: { fontSize: font.xs, color: colors.textSub, marginTop: 2 },
+  recentCard:    { borderRadius: radius.xl, borderWidth: 1, marginBottom: spacing.md, overflow: 'hidden' },
+  recentHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.md },
+  recentLeft:    { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  recentIcon:    { fontSize: 24 },
+  recentTitle:   { fontSize: font.md, fontWeight: '700' },
+  recentSub:     { fontSize: font.xs, marginTop: 2 },
+  arrow:         { fontSize: font.xl },
+  recentList:    { borderTopWidth: 1 },
+  recentItem:    { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  recentItemText: { fontSize: font.sm },
+  recentItemMeta: { fontSize: font.xs, marginTop: 2 },
 })
