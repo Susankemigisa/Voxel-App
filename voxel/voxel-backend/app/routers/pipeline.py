@@ -1,7 +1,5 @@
 """
 Pipeline Router — POST /api/v1/pipeline/process
-
-The main Voxel endpoint: impaired audio in → clean text + audio out.
 """
 import logging
 import base64
@@ -24,6 +22,21 @@ settings = get_settings()
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
 
+def _safe_model_used(model_used) -> Optional[str]:
+    """
+    DB constraint only allows 'wav2vec2' or 'mms'.
+    Whisper is the ASR model but pipeline wraps it — map to closest allowed value.
+    """
+    if model_used is None:
+        return None
+    val = model_used.value if hasattr(model_used, 'value') else str(model_used)
+    if val in ('wav2vec2', 'mms'):
+        return val
+    if 'whisper' in val.lower():
+        return 'wav2vec2'  # whisper is an ASR model, map to wav2vec2 slot
+    return None  # unknown — omit to avoid constraint violation
+
+
 @router.post("/process", response_model=PipelineResponse)
 async def process_pipeline(
     audio:        UploadFile       = File(...,  description="Audio file (any format, max 10MB)"),
@@ -37,26 +50,15 @@ async def process_pipeline(
 ):
     """
     Full 5-stage voice reconstruction pipeline.
-
-    - Stage 1: Denoise, normalise, trim audio
-    - Stage 2: ASR transcription (wav2vec2 / MMS)
-    - Stage 3: LLM text reconstruction (Claude Haiku)
-    - Stage 4: Optional translation (en ↔ lg)
-    - Stage 5: TTS synthesis (MMS-TTS)
-
-    Returns clean transcript + optional base64 audio.
     """
-    # Read audio bytes
     audio_bytes = await audio.read()
     if not audio_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty audio file")
 
-    # Parse optional translate_to
     translate_lang: Optional[Language] = None
     if translate_to and translate_to in Language._value2member_map_:
         translate_lang = Language(translate_to)
 
-    # Fetch user's saved phrases for LLM context (if authenticated)
     user_phrases: list[str] = []
     if user:
         try:
@@ -73,7 +75,6 @@ async def process_pipeline(
         except Exception as e:
             logger.warning("Could not fetch user phrases: %s", e)
 
-    # Run pipeline
     try:
         result = await voice_pipeline.process(
             audio_bytes  = audio_bytes,
@@ -92,7 +93,6 @@ async def process_pipeline(
 
     audio_url: Optional[str] = None
 
-    # Persist generated audio if user is authenticated and audio is available.
     if user and result.audio_base64:
         try:
             user_id = user["sub"]
@@ -117,32 +117,42 @@ async def process_pipeline(
         except Exception as e:
             logger.warning("Could not persist generated audio: %s", e)
 
-    # Persist to transcription history (fire-and-forget)
+    # Debug: log auth status
+    if user:
+        logger.info("✅ Authenticated user: %s", user.get("sub", "unknown"))
+    else:
+        logger.warning("⚠️ No authenticated user — session NOT saved. Check SUPABASE_JWT_SECRET in Modal secret.")
+
+    # Save session — only insert columns that exist in the DB schema
     if user and result.raw_transcript:
         try:
             user_id  = user["sub"]
             supabase = get_supabase()
-            supabase.table("transcription_history").insert({
+            safe_model = _safe_model_used(result.model_used)
+            row = {
                 "user_id":    user_id,
-                "transcript": result.clean_text,
+                "transcript": result.clean_text or result.raw_transcript,
                 "language":   result.language,
                 "confidence": result.confidence,
                 "audio_url":  audio_url,
-                "model_used": result.model_used.value,
-            }).execute()
+            }
+            if safe_model:
+                row["model_used"] = safe_model
+            supabase.table("transcription_history").insert(row).execute()
+            logger.info("Session saved for user %s", user_id)
         except Exception as e:
             logger.warning("Could not save transcription history: %s", e)
 
     return PipelineResponse(
-        raw_transcript = result.raw_transcript,
-        clean_text     = result.clean_text,
-        language       = result.language,
-        confidence     = result.confidence,
-        model_used     = result.model_used,
-        audio_base64   = result.audio_base64,
-        audio_url      = audio_url,
-        duration_ms    = result.duration_ms,
-        pipeline_ms    = result.pipeline_ms,
+        raw_transcript    = result.raw_transcript,
+        clean_text        = result.clean_text,
+        language          = result.language,
+        confidence        = result.confidence,
+        model_used        = result.model_used,
+        audio_base64      = result.audio_base64,
+        audio_url         = audio_url,
+        duration_ms       = result.duration_ms,
+        pipeline_ms       = result.pipeline_ms,
         navigation_intent = result.navigation_intent,
     )
 
@@ -158,11 +168,7 @@ class CorrectionResponse(_BaseModel):
 
 @router.post("/correct", response_model=CorrectionResponse)
 async def correct_text(req: CorrectionRequest):
-    """
-    AI text correction endpoint for Smart Correction feature.
-    Takes already-transcribed text and refines it further.
-    """
-    import anthropic, os, time
+    import anthropic, os
 
     original = req.text.strip()
     if not original:

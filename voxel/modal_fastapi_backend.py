@@ -15,8 +15,6 @@ Required Modal secret:
 Include backend environment variables from voxel/voxel-backend/.env.
 """
 
-import sys
-
 import modal
 
 APP_NAME    = "voxel-fastapi-backend"
@@ -43,11 +41,6 @@ image = (
             "TOKENIZERS_PARALLELISM":   "false",
             "PYTHONUNBUFFERED":         "1",
             "PYTHONDONTWRITEBYTECODE":  "1",
-            # ── Force fallback-safe strategies ────────────────────────────────
-            # "auto" means: try Modal endpoint first, but if it returns
-            # 404 "app stopped" (cold start), fall through to HF Inference
-            # API then local model — so the app NEVER returns a 500 to users
-            # just because a sub-endpoint is sleeping.
             "ASR_EN_STRATEGY":          "auto",
             "ASR_LG_STRATEGY":          "auto",
             "TTS_STRATEGY":             "auto",
@@ -68,16 +61,14 @@ app = modal.App(APP_NAME)
     volumes={"/app/models": model_cache},
     secrets=[modal.Secret.from_name(SECRET_NAME)],
     timeout=3600,
-    # Keep the container warm for 5 minutes after last request so cold-starts
-    # are rare — users won't hit the "app stopped" fallback in normal usage.
-    scaledown_window=60 * 5,
+    min_containers=1,
+
+    scaledown_window=60 * 15,
 )
 @modal.asgi_app()
 def fastapi_app():
-    # Make backend package importable as `app.*`
-    if "/root/backend" not in sys.path:
-        sys.path.insert(0, "/root/backend")
+    import sys
+    sys.path.insert(0, "/root/backend")
 
-    from app.main import app as fastapi
-
-    return fastapi
+    from app.main import app as voxel_app
+    return voxel_app

@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.services.model_loader import model_registry
-from app.routers import pipeline, asr, tts, translate, auth, navigation
+from app.routers import pipeline, asr, tts, translate, auth, navigation, sessions
 from app.models.schemas import HealthResponse, ModelStatus
 
 logging.basicConfig(
@@ -73,6 +73,7 @@ app.include_router(tts.router,      prefix=PREFIX)
 app.include_router(translate.router, prefix=PREFIX)
 app.include_router(auth.router,     prefix=PREFIX)
 app.include_router(navigation.router, prefix=PREFIX)
+app.include_router(sessions.router,   prefix=PREFIX)
 
 
 # ── Health + model status ─────────────────────────────────────────────────────
