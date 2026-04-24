@@ -23,6 +23,10 @@ from app.config import get_settings
 logger   = logging.getLogger(__name__)
 settings = get_settings()
 
+# Raised when Modal returns "app stopped" — always triggers fallback even in modal-only mode
+class ModalUnavailableError(RuntimeError):
+    pass
+
 
 @dataclass
 class ASRResult:
@@ -79,6 +83,10 @@ class ASRService:
             if settings.asr_modal_url:
                 try:
                     return await self._transcribe_modal(audio, language)
+                except ModalUnavailableError as e:
+                    # Modal app is stopped/cold — ALWAYS fall through to HF/local
+                    # regardless of strategy, so the app never returns a 500 to users
+                    logger.warning("Modal ASR unavailable (app stopped) — falling back: %s", e)
                 except Exception as e:
                     if strategy == "modal":
                         raise RuntimeError(f"Modal ASR failed: {e}") from e
@@ -137,6 +145,14 @@ class ASRService:
                 files=files,
                 data=data,
             )
+
+        if response.status_code == 404:
+            body = response.text or ""
+            if "app for invoked web endpoint is stopped" in body or "modal-http" in body:
+                raise ModalUnavailableError(
+                    f"Modal ASR app is stopped (cold) — falling back: {body[:120]}"
+                )
+            raise ModalUnavailableError(f"Modal ASR endpoint returned 404: {body[:120]}")
 
         if response.status_code != 200:
             raise RuntimeError(f"Modal endpoint returned {response.status_code}: {response.text}")

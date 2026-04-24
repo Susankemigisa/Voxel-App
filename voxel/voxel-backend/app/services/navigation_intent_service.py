@@ -17,6 +17,10 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Raised when Modal returns "app stopped" — always triggers fallback
+class ModalUnavailableError(RuntimeError):
+    pass
+
 
 EN_TRIGGERS = [
     "take me to", "navigate to", "go to", "directions to", "how do i get to",
@@ -86,6 +90,8 @@ class NavigationIntentService:
             if settings.navigation_modal_url:
                 try:
                     return await self._extract_modal(text=text, language=language)
+                except ModalUnavailableError as e:
+                    logger.warning("Modal Navigation unavailable (app stopped) — falling back: %s", e)
                 except Exception as e:
                     if strategy == "modal":
                         raise RuntimeError(f"Modal navigation extraction failed: {e}") from e
@@ -111,6 +117,14 @@ class NavigationIntentService:
 
         async with httpx.AsyncClient(timeout=settings.navigation_modal_timeout_s) as client:
             response = await client.post(settings.navigation_modal_url, json=payload, headers=headers)
+
+        if response.status_code == 404:
+            body = response.text or ""
+            if "app for invoked web endpoint is stopped" in body or "modal-http" in body:
+                raise ModalUnavailableError(
+                    f"Modal Navigation app is stopped (cold) — falling back: {body[:120]}"
+                )
+            raise ModalUnavailableError(f"Modal Navigation endpoint returned 404: {body[:120]}")
 
         if response.status_code != 200:
             raise RuntimeError(f"Modal endpoint returned {response.status_code}: {response.text}")

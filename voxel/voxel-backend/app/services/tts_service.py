@@ -28,6 +28,10 @@ from app.config import get_settings
 logger   = logging.getLogger(__name__)
 settings = get_settings()
 
+# Raised when Modal returns "app stopped" — always triggers fallback
+class ModalUnavailableError(RuntimeError):
+    pass
+
 
 @dataclass
 class TTSResult:
@@ -63,6 +67,10 @@ class TTSService:
             if settings.tts_modal_url:
                 try:
                     return await self._synth_modal(text, language, voice, pitch, rate)
+                except ModalUnavailableError as e:
+                    # Modal app is stopped/cold — ALWAYS fall through to local model
+                    # regardless of strategy, so the app never returns a 500 to users
+                    logger.warning("Modal TTS unavailable (app stopped) — falling back: %s", e)
                 except Exception as e:
                     if strategy == "modal":
                         raise RuntimeError(f"Modal TTS failed: {e}") from e
@@ -135,6 +143,14 @@ class TTSService:
 
         async with httpx.AsyncClient(timeout=settings.tts_modal_timeout_s) as client:
             response = await client.post(settings.tts_modal_url, json=payload, headers=headers)
+
+        if response.status_code == 404:
+            body = response.text or ""
+            if "app for invoked web endpoint is stopped" in body or "modal-http" in body:
+                raise ModalUnavailableError(
+                    f"Modal TTS app is stopped (cold) — falling back: {body[:120]}"
+                )
+            raise ModalUnavailableError(f"Modal TTS endpoint returned 404: {body[:120]}")
 
         if response.status_code != 200:
             raise RuntimeError(f"Modal endpoint returned {response.status_code}: {response.text}")

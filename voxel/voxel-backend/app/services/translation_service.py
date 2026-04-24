@@ -15,6 +15,10 @@ from app.config import get_settings
 logger   = logging.getLogger(__name__)
 settings = get_settings()
 
+# Raised when Modal returns "app stopped" — always triggers fallback
+class ModalUnavailableError(RuntimeError):
+    pass
+
 
 @dataclass
 class TranslationResult:
@@ -63,6 +67,9 @@ class TranslationService:
             if modal_url:
                 try:
                     return await self._translate_modal(text, source_lang, target_lang, modal_url)
+                except ModalUnavailableError as e:
+                    # Modal app is stopped/cold — ALWAYS fall through to local model
+                    logger.warning("Modal Translation unavailable (app stopped) — falling back: %s", e)
                 except Exception as e:
                     if strategy == "modal":
                         raise RuntimeError(f"Modal translation failed: {e}") from e
@@ -122,6 +129,14 @@ class TranslationService:
 
         async with httpx.AsyncClient(timeout=settings.translate_modal_timeout_s) as client:
             response = await client.post(modal_url, json=payload, headers=headers)
+
+        if response.status_code == 404:
+            body = response.text or ""
+            if "app for invoked web endpoint is stopped" in body or "modal-http" in body:
+                raise ModalUnavailableError(
+                    f"Modal Translation app is stopped (cold) — falling back: {body[:120]}"
+                )
+            raise ModalUnavailableError(f"Modal Translation endpoint returned 404: {body[:120]}")
 
         if response.status_code != 200:
             raise RuntimeError(f"Modal endpoint returned {response.status_code}: {response.text}")

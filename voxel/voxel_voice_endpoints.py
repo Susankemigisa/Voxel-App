@@ -5,20 +5,19 @@ Deploy:
   modal deploy voxel_voice_endpoints.py
 
 Endpoints:
-  POST /asr/transcribe   — Whisper speech-to-text
-  POST /tts/synthesize   — MMS / SpeechT5 text-to-speech
-  POST /translate        — Helsinki-NLP English <-> Luganda translation
+  POST /asr/transcribe   — Whisper speech-to-text (multipart form: wav + language)
+  POST /tts/synthesize   — MMS / SpeechT5 text-to-speech (JSON)
+  POST /translate        — Helsinki-NLP English <-> Luganda translation (JSON)
 
-After deploy, update your .env:
-  ASR_MODAL_URL=https://<your-workspace>--voxel-voice-endpoints-asrendpoint-transcribe.modal.run
-  TTS_MODAL_URL=https://<your-workspace>--voxel-voice-endpoints-ttsendpoint-synthesize.modal.run
-  TRANSLATE_MODAL_EN_LG_URL=https://<your-workspace>--voxel-voice-endpoints-translationendpoint-translate.modal.run
-  TRANSLATE_MODAL_LG_EN_URL=https://<your-workspace>--voxel-voice-endpoints-translationendpoint-translate.modal.run
+After deploy, update your .env / Modal secret:
+  ASR_MODAL_URL=https://<workspace>--voxel-voice-endpoints-asrendpoint-transcribe.modal.run
+  TTS_MODAL_URL=https://<workspace>--voxel-voice-endpoints-ttsendpoint-synthesize.modal.run
+  TRANSLATE_MODAL_EN_LG_URL=https://<workspace>--voxel-voice-endpoints-translationendpoint-translate.modal.run
+  TRANSLATE_MODAL_LG_EN_URL=https://<workspace>--voxel-voice-endpoints-translationendpoint-translate.modal.run
 """
 
 import base64
 import io
-import json
 import logging
 
 import modal
@@ -26,8 +25,8 @@ import modal
 # ── App & Image ───────────────────────────────────────────────────────────────
 
 APP_NAME  = "voxel-voice-endpoints"
-GPU       = "T4"          # cheapest Modal GPU — enough for Whisper + MMS
-SCALEDOWN = 60 * 15       # keep warm for 15 min after last request
+GPU       = "T4"        # cheapest Modal GPU — enough for Whisper + MMS
+SCALEDOWN = 60 * 15     # keep warm for 15 min after last request
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -39,6 +38,7 @@ image = (
     )
     .pip_install(
         "fastapi[standard]",
+        "python-multipart",   # required for UploadFile / Form in FastAPI
         "torch",
         "torchaudio",
         "transformers",
@@ -55,9 +55,13 @@ model_cache = modal.Volume.from_name("voxel-model-cache", create_if_missing=True
 
 app = modal.App(APP_NAME)
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+# ── Model IDs ─────────────────────────────────────────────────────────────────
 
-WHISPER_MODEL_ID    = "openai/whisper-small"
+WHISPER_EN_ID       = "openai/whisper-small"
+# Ugandan English fine-tuned Whisper — much better for local accents
+WHISPER_UG_EN_ID    = "cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0"
+# Luganda ASR — MMS-1B supports 1000+ languages including Luganda (lug)
+MMS_ASR_LG_ID       = "facebook/mms-1b-all"
 MMS_TTS_EN_ID       = "facebook/mms-tts-eng"
 MMS_TTS_LG_ID       = "facebook/mms-tts-lug"
 SPEECHT5_ID         = "microsoft/speecht5_tts"
@@ -84,85 +88,136 @@ class ASREndpoint:
     @modal.enter()
     def load(self):
         import torch
-        from transformers import WhisperForConditionalGeneration, WhisperProcessor
+        from transformers import (
+            WhisperForConditionalGeneration, WhisperProcessor,
+            Wav2Vec2ForCTC, AutoProcessor,
+        )
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.processor = WhisperProcessor.from_pretrained(
-            WHISPER_MODEL_ID, cache_dir="/app/models"
+
+        # Primary: Ugandan English fine-tuned Whisper
+        try:
+            self.processor_ug = WhisperProcessor.from_pretrained(
+                WHISPER_UG_EN_ID, cache_dir="/app/models"
+            )
+            self.model_ug = WhisperForConditionalGeneration.from_pretrained(
+                WHISPER_UG_EN_ID, cache_dir="/app/models"
+            ).to(self.device)
+            self.model_ug.eval()
+            logger.info("✅ Ugandan Whisper loaded on %s", self.device)
+        except Exception as e:
+            logger.warning("Could not load Ugandan Whisper, falling back to standard: %s", e)
+            self.model_ug = None
+            self.processor_ug = None
+
+        # Fallback English: standard Whisper small
+        self.processor_en = WhisperProcessor.from_pretrained(
+            WHISPER_EN_ID, cache_dir="/app/models"
         )
-        self.model = WhisperForConditionalGeneration.from_pretrained(
-            WHISPER_MODEL_ID, cache_dir="/app/models"
+        self.model_en = WhisperForConditionalGeneration.from_pretrained(
+            WHISPER_EN_ID, cache_dir="/app/models"
         ).to(self.device)
-        self.model.eval()
-        logger.info("✅ Whisper loaded on %s", self.device)
+        self.model_en.eval()
+        logger.info("✅ Standard Whisper loaded on %s", self.device)
+
+        # Luganda ASR: MMS-1B-all with Luganda adapter
+        try:
+            self.processor_lg = AutoProcessor.from_pretrained(
+                MMS_ASR_LG_ID, cache_dir="/app/models"
+            )
+            self.processor_lg.tokenizer.set_target_lang("lug")
+            self.model_lg = Wav2Vec2ForCTC.from_pretrained(
+                MMS_ASR_LG_ID, cache_dir="/app/models",
+                target_lang="lug", ignore_mismatched_sizes=True,
+            ).to(self.device)
+            self.model_lg.eval()
+            logger.info("✅ MMS Luganda ASR loaded on %s", self.device)
+        except Exception as e:
+            logger.warning("Could not load MMS Luganda ASR: %s", e)
+            self.model_lg = None
+            self.processor_lg = None
 
     @modal.fastapi_endpoint(method="POST")
-    async def transcribe(self, request: dict):
+    async def transcribe(self, request: "Request"):  # type: ignore[name-defined]
         """
-        Accepts multipart form OR JSON with base64 audio.
-
-        Multipart form fields:
+        Accepts multipart form data:
           wav      — audio file bytes (WAV, 16kHz mono preferred)
           language — "en" or "lg" (default: "en")
 
-        JSON fields:
-          audio_base64 — base64-encoded WAV bytes
-          language     — "en" or "lg" (default: "en")
-
         Returns:
-          { "transcription": "...", "language": "en", "confidence": 0.95 }
+          { "transcription": "...", "text": "...", "language": "en", "confidence": 0.95 }
         """
         import numpy as np
         import soundfile as sf
         import torch
+        from fastapi import Request
 
-        audio_b64 = request.get("audio_base64", "")
-        language  = request.get("language", "en")
+        form     = await request.form()
+        language = str(form.get("language", "en")).strip().lower()
 
-        if not audio_b64:
+        wav_field = form.get("wav")
+        if wav_field is None:
             from fastapi import HTTPException
-            raise HTTPException(status_code=422, detail="audio_base64 is required")
+            raise HTTPException(status_code=422, detail="'wav' field is required in multipart form")
+
+        # Read bytes from UploadFile or raw bytes
+        if hasattr(wav_field, "read"):
+            wav_bytes = await wav_field.read()
+        else:
+            wav_bytes = bytes(wav_field)
 
         # Decode audio
-        wav_bytes = base64.b64decode(audio_b64)
         buf       = io.BytesIO(wav_bytes)
         audio, sr = sf.read(buf, dtype="float32")
 
-        # Resample if needed
         if sr != SAMPLE_RATE:
             import librosa
             audio = librosa.resample(audio, orig_sr=sr, target_sr=SAMPLE_RATE)
 
-        # Mono
         if audio.ndim > 1:
             audio = audio.mean(axis=1)
 
-        # Run Whisper
-        inputs = self.processor(
-            audio,
-            sampling_rate=SAMPLE_RATE,
-            return_tensors="pt",
-        )
-        input_features = inputs.input_features.to(self.device)
-
-        with torch.no_grad():
-            predicted_ids = self.model.generate(
-                input_features,
-                language="english",
-                task="transcribe",
-                no_speech_threshold=0.6,
-                condition_on_prev_tokens=False,
+        # Route to correct model
+        if language == "lg" and self.model_lg is not None:
+            # Luganda — MMS wav2vec2
+            inputs = self.processor_lg(
+                audio, sampling_rate=SAMPLE_RATE, return_tensors="pt", padding=True
             )
+            input_values = inputs.input_values.to(self.device)
+            with torch.no_grad():
+                logits = self.model_lg(input_values).logits
+            predicted_ids = torch.argmax(logits, dim=-1)
+            transcript    = self.processor_lg.batch_decode(predicted_ids)[0].strip()
+            confidence    = float(torch.softmax(logits, dim=-1).max(dim=-1).values.mean().item())
+        else:
+            # English — prefer Ugandan fine-tuned, fall back to standard Whisper
+            model     = self.model_ug     if self.model_ug     else self.model_en
+            processor = self.processor_ug if self.processor_ug else self.processor_en
 
-        transcript = self.processor.batch_decode(
-            predicted_ids, skip_special_tokens=True
-        )[0].strip()
+            inputs = processor(audio, sampling_rate=SAMPLE_RATE, return_tensors="pt")
+            input_features = inputs.input_features.to(self.device)
+
+            with torch.no_grad():
+                predicted_ids = model.generate(
+                    input_features,
+                    language="english",
+                    task="transcribe",
+                    no_speech_threshold=0.6,
+                    condition_on_prev_tokens=False,
+                )
+
+            transcript = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0].strip()
+            confidence = 0.95
+
+        if not transcript:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=422, detail="No speech detected in audio")
 
         return {
             "transcription": transcript,
-            "text":          transcript,   # alias for compatibility
+            "text":          transcript,
             "language":      language,
-            "confidence":    0.95,
+            "confidence":    round(min(max(confidence, 0.0), 1.0), 3),
         }
 
 
@@ -189,7 +244,7 @@ class TTSEndpoint:
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        # MMS English TTS (male)
+        # MMS English TTS (male / robot)
         self.mms_en_tokenizer = VitsTokenizer.from_pretrained(
             MMS_TTS_EN_ID, cache_dir="/app/models"
         )
@@ -215,20 +270,16 @@ class TTSEndpoint:
             SPEECHT5_ID, cache_dir="/app/models"
         ).to(self.device)
         self.speecht5_model.eval()
-
         self.speecht5_vocoder = SpeechT5HifiGan.from_pretrained(
             SPEECHT5_VOCODER_ID, cache_dir="/app/models"
         ).to(self.device)
         self.speecht5_vocoder.eval()
 
-        # Speaker embedding (CLB female voice)
         embeddings_dataset = load_dataset(
-            "Matthijs/cmu-arctic-xvectors",
-            split="validation",
-            cache_dir="/app/models",
+            "Matthijs/cmu-arctic-xvectors", split="validation", cache_dir="/app/models"
         )
-        import torch as _torch
-        self.speaker_embeddings = _torch.tensor(
+        import torch as _t
+        self.speaker_embeddings = _t.tensor(
             embeddings_dataset[7306]["xvector"]
         ).unsqueeze(0).to(self.device)
 
@@ -243,15 +294,6 @@ class TTSEndpoint:
           voice    — "female", "male", or "robot" (default: "female")
           pitch    — 0.0–1.0, 0.5 = no change (default: 0.5)
           rate     — speaking rate, 1.0 = natural (default: 1.0)
-
-        Returns:
-          {
-            "audio_base64": "...",
-            "duration_ms": 1234,
-            "sample_rate": 16000,
-            "voice": "female",
-            "text": "..."
-          }
         """
         import numpy as np
         import soundfile as sf
@@ -267,12 +309,11 @@ class TTSEndpoint:
             from fastapi import HTTPException
             raise HTTPException(status_code=422, detail="text is required")
 
-        # Route to correct model
         use_speecht5 = (voice == "female" and language == "en")
 
         if use_speecht5:
             inputs  = self.speecht5_processor(text=text, return_tensors="pt").to(self.device)
-            spk_emb = self.speaker_embeddings.to(self.device)
+            spk_emb = self.speaker_embeddings
             with torch.no_grad():
                 speech = self.speecht5_model.generate_speech(
                     inputs["input_ids"], spk_emb, vocoder=self.speecht5_vocoder
@@ -288,17 +329,14 @@ class TTSEndpoint:
             sample_rate = self.mms_lg_model.config.sampling_rate
 
         else:
-            # English male or robot
             inputs = self.mms_en_tokenizer(text, return_tensors="pt").to(self.device)
             with torch.no_grad():
                 output = self.mms_en_model(**inputs)
             waveform    = output.waveform[0].cpu().numpy()
             sample_rate = self.mms_en_model.config.sampling_rate
 
-        # Apply pitch/rate adjustments
-        waveform = _apply_rate_and_pitch(waveform, sample_rate, rate, pitch)
+        waveform = _apply_rate_and_pitch(waveform, sample_rate, rate, pitch, voice)
 
-        # Encode to base64 WAV
         buf = io.BytesIO()
         sf.write(buf, waveform, sample_rate, format="WAV", subtype="PCM_16")
         buf.seek(0)
@@ -352,20 +390,6 @@ class TranslationEndpoint:
 
     @modal.fastapi_endpoint(method="POST")
     async def translate(self, request: dict):
-        """
-        JSON fields:
-          text        — text to translate (required)
-          source_lang — "en" or "lg" (required)
-          target_lang — "en" or "lg" (required)
-
-        Returns:
-          {
-            "translated": "...",
-            "source_lang": "en",
-            "target_lang": "lg",
-            "model_used": "Helsinki-NLP/opus-mt-en-lg"
-          }
-        """
         import torch
 
         text        = (request.get("text") or "").strip()
@@ -377,60 +401,40 @@ class TranslationEndpoint:
             raise HTTPException(status_code=422, detail="text is required")
 
         if source_lang == target_lang:
-            return {
-                "translated":  text,
-                "source_lang": source_lang,
-                "target_lang": target_lang,
-                "model_used":  "none",
-            }
+            return {"translated": text, "source_lang": source_lang,
+                    "target_lang": target_lang, "model_used": "none"}
 
         if source_lang == "en" and target_lang == "lg":
-            tokenizer = self.en_lg_tokenizer
-            model     = self.en_lg_model
-            model_id  = TRANSLATE_EN_LG_ID
+            tokenizer, model, model_id = self.en_lg_tokenizer, self.en_lg_model, TRANSLATE_EN_LG_ID
         elif source_lang == "lg" and target_lang == "en":
-            tokenizer = self.lg_en_tokenizer
-            model     = self.lg_en_model
-            model_id  = TRANSLATE_LG_EN_ID
+            tokenizer, model, model_id = self.lg_en_tokenizer, self.lg_en_model, TRANSLATE_LG_EN_ID
         else:
             from fastapi import HTTPException
-            raise HTTPException(
-                status_code=422,
-                detail=f"Unsupported language pair: {source_lang} -> {target_lang}"
-            )
+            raise HTTPException(status_code=422,
+                detail=f"Unsupported language pair: {source_lang} -> {target_lang}")
 
         inputs = tokenizer(text, return_tensors="pt", padding=True).to(self.device)
         with torch.no_grad():
             translated_tokens = model.generate(**inputs, max_new_tokens=256)
-        translated = tokenizer.batch_decode(
-            translated_tokens, skip_special_tokens=True
-        )[0]
+        translated = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)[0]
 
-        return {
-            "translated":  translated,
-            "source_lang": source_lang,
-            "target_lang": target_lang,
-            "model_used":  model_id,
-        }
+        return {"translated": translated, "source_lang": source_lang,
+                "target_lang": target_lang, "model_used": model_id}
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
-def _apply_rate_and_pitch(
-    waveform:    "np.ndarray",
-    sample_rate: int,
-    rate:        float,
-    pitch:       float,
-) -> "np.ndarray":
+def _apply_rate_and_pitch(waveform, sample_rate, rate, pitch, voice="female"):
     try:
         import librosa
         import numpy as np
         waveform = waveform.astype(np.float32)
+        # Robot voice: shift pitch down
+        if voice == "robot":
+            pitch = max(0.0, pitch - 0.25)
         if abs(pitch - 0.5) > 0.05:
             n_steps  = (pitch - 0.5) * 12
-            waveform = librosa.effects.pitch_shift(
-                waveform, sr=sample_rate, n_steps=n_steps
-            )
+            waveform = librosa.effects.pitch_shift(waveform, sr=sample_rate, n_steps=n_steps)
         if abs(rate - 1.0) > 0.05:
             waveform = librosa.effects.time_stretch(waveform, rate=rate)
     except Exception as e:
