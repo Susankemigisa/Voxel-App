@@ -243,14 +243,24 @@ class ASRService:
 
         if not model_registry.is_loaded(key):
             logger.warning("ASR model %s not loaded — attempting lazy load", key)
-            if language == Language.EN:
-                model_registry.load_asr_en()
-            else:
-                model_registry.load_asr_lg()
+            try:
+                if language == Language.EN:
+                    model_registry.load_asr_en()
+                else:
+                    model_registry.load_asr_lg()
+            except Exception as load_err:
+                logger.error("Lazy load of ASR model '%s' raised: %s", key, load_err)
+                raise RuntimeError(
+                    f"Speech recognition failed: ASR model for language '{language}' "
+                    f"could not be loaded — {load_err}"
+                ) from load_err
 
         loaded = model_registry.get(key)
         if not loaded or not loaded.loaded:
-            raise RuntimeError(f"ASR model for language '{language}' is not available")
+            raise RuntimeError(
+                f"Speech recognition failed: ASR model for language '{language}' is not available. "
+                f"Check backend logs for the model load error (OOM / download failure are common causes)."
+            )
 
         model     = loaded.model
         processor = loaded.extra

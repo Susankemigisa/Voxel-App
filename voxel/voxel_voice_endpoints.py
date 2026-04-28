@@ -10,6 +10,7 @@ import io
 import logging
 
 import modal
+from fastapi import Request
 
 APP_NAME  = "voxel-voice-endpoints"
 GPU       = "T4"
@@ -108,11 +109,10 @@ class ASREndpoint:
             logger.warning("MMS Luganda ASR failed: %s", e)
 
     @modal.fastapi_endpoint(method="POST")
-    async def transcribe(self, request: "Request"):  # type: ignore[name-defined]
+    async def transcribe(self, request: Request):
         import numpy as np
         import soundfile as sf
         import torch
-        from fastapi import Request
 
         form     = await request.form()
         language = str(form.get("language", "en")).strip().lower()
@@ -140,7 +140,7 @@ class ASREndpoint:
             processor = self.processor_ug if self.processor_ug else self.processor_en
             inputs    = processor(audio, sampling_rate=SAMPLE_RATE, return_tensors="pt")
             with torch.no_grad():
-                predicted_ids = model.generate(inputs.input_features.to(self.device), language="english", task="transcribe", no_speech_threshold=0.6, condition_on_prev_tokens=False)
+                predicted_ids = model.generate(inputs.input_features.to(self.device), language="english", task="transcribe")
             transcript = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0].strip()
             confidence = 0.95
 

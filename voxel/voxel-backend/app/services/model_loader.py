@@ -152,38 +152,56 @@ class ModelRegistry:
         mms-1b-all uses AutoProcessor (not Wav2Vec2Processor) and requires
         calling model.load_adapter("lug") + set_default_lm_head() to switch
         the model to Luganda mode. This is the correct way per the MMS docs.
+
+        Falls back to hf_asr_model_lg_alt (mms-300m) if the primary fails.
         """
-        key      = "asr_lg"
+        key = "asr_lg"
         if self._models.get(key, LoadedModel("", None)).loaded:
             return
-        model_id = settings.hf_asr_model_lg
-        logger.info("Loading Luganda ASR model: %s (lug adapter)", model_id)
-        try:
-            processor = AutoProcessor.from_pretrained(
-                model_id,
-                cache_dir=self.cache_dir,
-                token=settings.hf_token or None,
-            )
-            model = Wav2Vec2ForCTC.from_pretrained(
-                model_id,
-                cache_dir=self.cache_dir,
-                token=settings.hf_token or None,
-                ignore_mismatched_sizes=True,
-            ).to(self.device)
 
-            # Activate the Luganda language adapter
-            processor.tokenizer.set_target_lang("lug")
-            model.load_adapter("lug")
-            model.eval()
+        model_ids = [settings.hf_asr_model_lg]
+        if hasattr(settings, "hf_asr_model_lg_alt") and settings.hf_asr_model_lg_alt:
+            model_ids.append(settings.hf_asr_model_lg_alt)
 
-            self._models[key] = LoadedModel(
-                name=model_id, model=model, extra=processor,
-                loaded=True, device=self.device,
-            )
-            logger.info("✅ Luganda ASR loaded (mms-1b-all + lug adapter)")
-        except Exception as e:
-            logger.error("❌ Failed to load Luganda ASR: %s", e)
-            self._models[key] = LoadedModel(name=model_id, model=None, loaded=False, device="cpu")
+        loaded_model = None
+        last_error = None
+
+        for model_id in model_ids:
+            logger.info("Loading Luganda ASR model: %s (lug adapter)", model_id)
+            try:
+                processor = AutoProcessor.from_pretrained(
+                    model_id,
+                    cache_dir=self.cache_dir,
+                    token=settings.hf_token or None,
+                )
+                model = Wav2Vec2ForCTC.from_pretrained(
+                    model_id,
+                    cache_dir=self.cache_dir,
+                    token=settings.hf_token or None,
+                    ignore_mismatched_sizes=True,
+                ).to(self.device)
+
+                # Activate the Luganda language adapter
+                processor.tokenizer.set_target_lang("lug")
+                model.load_adapter("lug")
+                model.eval()
+
+                loaded_model = LoadedModel(
+                    name=model_id, model=model, extra=processor,
+                    loaded=True, device=self.device,
+                )
+                logger.info("✅ Luganda ASR loaded (mms + lug adapter): %s", model_id)
+                break
+            except Exception as e:
+                logger.warning("❌ Failed to load Luganda ASR model %s: %s", model_id, e)
+                last_error = e
+                continue
+
+        if loaded_model:
+            self._models[key] = loaded_model
+        else:
+            logger.error("Failed to load any Luganda ASR model from %s: %s", model_ids, last_error)
+            self._models[key] = LoadedModel(name="", model=None, loaded=False, device="cpu")
 
     # ── Translation ───────────────────────────────────────────────────────────
 
@@ -331,6 +349,7 @@ class ModelRegistry:
         loaders = []
         if preload_local_asr:
             loaders.insert(0, self.load_asr_en)
+            loaders.insert(1, self.load_asr_lg)  # Always preload Luganda too
         if preload_local_tts:
             loaders.extend([
                 self.load_tts_speecht5,

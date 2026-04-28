@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     # hf_asr_model_en: str = "cdli/whisper-small_finetuned_ugandan_english_nonstandard_speech_v1.0"
     hf_asr_model_en: str = "openai/whisper-small"
     hf_asr_model_lg: str = "facebook/mms-1b-all"
+    hf_asr_model_lg_alt: str = "facebook/mms-300m"   # 300M fallback if mms-1b-all OOMs
     
     # Alternative Whisper models for fallback or testing
     hf_asr_model_en_alt: str = "openai/whisper-base"  # Fallback if small fails

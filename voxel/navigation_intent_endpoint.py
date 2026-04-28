@@ -23,6 +23,7 @@ import json
 import re
 
 import modal
+from fastapi import Body, HTTPException
 
 APP_NAME = "voxel-navigation-intent-endpoint-v1"
 GPU = "L4"
